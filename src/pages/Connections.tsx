@@ -104,7 +104,7 @@ export default function Connections() {
 
       // Store API key in Secret Manager
       const storeKey = httpsCallable(functions, 'storeKnackApiKey');
-      await storeKey({ connectionId, appId: appId.trim(), apiKey: apiKey.trim() });
+      await storeKey({ connectionId, tenantId, appId: appId.trim(), apiKey: apiKey.trim() });
 
       // Discover roles
       const fetchRoles = httpsCallable<{ connectionId: string }, DiscoveryResult>(functions, 'fetchKnackRoles');
@@ -226,7 +226,7 @@ export default function Connections() {
             </div>
             <div className="p-6">
               {step === 'credentials' && (
-                <div className="space-y-4">
+                <form onSubmit={(e) => { e.preventDefault(); handleDiscover(); }} className="space-y-4">
                   {wizardError && (
                     <p className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{wizardError}</p>
                   )}
@@ -262,14 +262,14 @@ export default function Connections() {
                     <p className="text-xs text-gray-400 mt-1">Stored securely in Google Secret Manager. Never saved in the database.</p>
                   </div>
                   <div className="flex justify-end gap-3 pt-2">
-                    <button onClick={() => setWizardOpen(false)} className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">
+                    <button type="button" onClick={() => setWizardOpen(false)} className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">
                       Cancel
                     </button>
-                    <button onClick={handleDiscover} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg">
-                      Connect & Discover Roles
+                    <button type="submit" className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg">
+                      Connect &amp; Discover Roles
                     </button>
                   </div>
-                </div>
+                </form>
               )}
 
               {step === 'discovering' && (
