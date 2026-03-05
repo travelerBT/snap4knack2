@@ -1,0 +1,39 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "snap_submissions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "pluginId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "snap_submissions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tenantId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "snap_submissions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "pluginId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "snap_submissions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tenantId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

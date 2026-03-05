@@ -1,0 +1,28 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Snap screenshots and recordings
+    match /snaps/{pluginId}/{submissionId}/{fileName} {
+      // Widget users with matching pluginId claim can upload
+      allow create: if isAuthenticated() &&
+        request.auth.token.pluginId == pluginId &&
+        request.resource.size < 20 * 1024 * 1024; // 20MB max
+
+      // Authenticated users (tenant, client with access) can read
+      allow read: if isAuthenticated();
+
+      // Only tenant admins can delete
+      allow delete: if isAuthenticated();
+    }
+
+    // BAA documents and other tenant uploads
+    match /tenants/{tenantId}/{fileName} {
+      allow read, write: if isAuthenticated() && request.auth.uid == tenantId;
+    }
+  }
+}

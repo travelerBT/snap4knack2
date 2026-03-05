@@ -1,0 +1,98 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        'admin' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.roles;
+    }
+
+    function isTenant(tenantId) {
+      return isAuthenticated() && request.auth.uid == tenantId;
+    }
+
+    function isClient() {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        'client' in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.roles;
+    }
+
+    function clientHasPluginAccess(pluginId) {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        pluginId in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('clientAccess', []);
+    }
+
+    // Users collection
+    match /users/{uid} {
+      allow read: if isAuthenticated() && (request.auth.uid == uid || isAdmin());
+      allow write: if isAuthenticated() && (request.auth.uid == uid || isAdmin());
+    }
+
+    // Tenants collection
+    match /tenants/{tenantId} {
+      allow read, write: if isTenant(tenantId) || isAdmin();
+
+      match /connections/{connectionId} {
+        allow read, write: if isTenant(tenantId) || isAdmin();
+      }
+
+      match /snapPlugins/{pluginId} {
+        allow read: if isTenant(tenantId) || isAdmin() || clientHasPluginAccess(pluginId);
+        allow write: if isTenant(tenantId) || isAdmin();
+      }
+
+      match /api_keys/{apiKeyId} {
+        allow read, write: if isTenant(tenantId) || isAdmin();
+      }
+    }
+
+    // Connection registry (one Knack app per tenant)
+    match /connectionRegistry/{appId} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    // Snap submissions
+    match /snap_submissions/{submissionId} {
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        resource.data.tenantId == request.auth.uid ||
+        clientHasPluginAccess(resource.data.pluginId)
+      );
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && (
+        isAdmin() ||
+        resource.data.tenantId == request.auth.uid ||
+        clientHasPluginAccess(resource.data.pluginId)
+      );
+      allow delete: if isAdmin() || resource.data.tenantId == request.auth.uid;
+
+      match /comments/{commentId} {
+        allow read: if isAuthenticated() && (
+          isAdmin() ||
+          get(/databases/$(database)/documents/snap_submissions/$(submissionId)).data.tenantId == request.auth.uid ||
+          clientHasPluginAccess(get(/databases/$(database)/documents/snap_submissions/$(submissionId)).data.pluginId)
+        );
+        allow create: if isAuthenticated();
+        allow update, delete: if isAuthenticated() && request.auth.uid == resource.data.authorUid;
+      }
+    }
+
+    // Client invitations
+    match /client_invitations/{inviteId} {
+      allow read: if isAdmin() || resource.data.tenantId == request.auth.uid;
+      allow write: if isAdmin() || resource.data.tenantId == request.auth.uid;
+    }
+
+    // Admin API keys
+    match /admin_api_keys/{apiKeyId} {
+      allow read, write: if isAdmin();
+    }
+  }
+}

@@ -1,0 +1,12 @@
+User-agent: *
+Allow: /
+Disallow: /dashboard
+Disallow: /connections
+Disallow: /snap-plugins
+Disallow: /snap-feed
+Disallow: /account
+Disallow: /api-keys
+Disallow: /admin
+Disallow: /client-portal
+
+Sitemap: https://snap4knack2.web.app/sitemap.xml

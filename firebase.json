@@ -1,0 +1,43 @@
+{
+  "hosting": {
+    "public": "dist",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "rewrites": [{ "source": "**", "destination": "/index.html" }],
+    "headers": [
+      {
+        "source": "/widget/**",
+        "headers": [
+          { "key": "Access-Control-Allow-Origin", "value": "*" },
+          { "key": "Cache-Control", "value": "public, max-age=300" }
+        ]
+      },
+      {
+        "source": "/robots.txt",
+        "headers": [{ "key": "Cache-Control", "value": "public, max-age=86400" }]
+      },
+      {
+        "source": "/sitemap.xml",
+        "headers": [{ "key": "Cache-Control", "value": "public, max-age=86400" }]
+      }
+    ]
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "ignore": ["node_modules", ".git", "lib"],
+      "predeploy": ["npm --prefix \"$RESOURCE_DIR\" run build"],
+      "runtime": "nodejs22"
+    }
+  ],
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "storage": {
+    "rules": "storage.rules"
+  },
+  "database": {
+    "rules": "database.rules.json"
+  }
+}
