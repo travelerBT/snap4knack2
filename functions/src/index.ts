@@ -22,7 +22,7 @@ async function getSendGridKey(): Promise<string> {
     const [version] = await secretClient.accessSecretVersion({
       name: `projects/${PROJECT_ID}/secrets/SENDGRID_API_KEY/versions/latest`,
     });
-    return version.payload?.data?.toString() || SENDGRID_API_KEY;
+    return (version.payload?.data?.toString() || SENDGRID_API_KEY).trim();
   } catch {
     return SENDGRID_API_KEY;
   }
@@ -30,7 +30,7 @@ async function getSendGridKey(): Promise<string> {
 
 async function getKnackApiKey(secretName: string): Promise<string> {
   const [version] = await secretClient.accessSecretVersion({ name: secretName });
-  return version.payload?.data?.toString() || "";
+  return (version.payload?.data?.toString() || "").trim();
 }
 
 // ── storeKnackApiKey ─────────────────────────────────────────────────────────
@@ -66,7 +66,7 @@ export const storeKnackApiKey = functions.https.onCall(
 
     await secretClient.addSecretVersion({
       parent: `${parent}/secrets/${secretId}`,
-      payload: { data: Buffer.from(apiKey) },
+      payload: { data: Buffer.from(apiKey.trim()) },
     });
 
     return { secretName: `${parent}/secrets/${secretId}/versions/latest` };
