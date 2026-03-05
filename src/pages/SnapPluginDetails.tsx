@@ -282,6 +282,11 @@ function RolesTab({ plugin, connection, onSave, saving }: {
   saving: boolean;
 }) {
   const [roles, setRoles] = useState<string[]>(plugin.selectedRoles);
+  const allUsers = roles.includes('*');
+
+  const toggleAll = () => {
+    setRoles(allUsers ? [] : ['*']);
+  };
 
   const toggle = (key: string) => {
     setRoles((prev) => prev.includes(key) ? prev.filter((r) => r !== key) : [...prev, key]);
@@ -291,10 +296,33 @@ function RolesTab({ plugin, connection, onSave, saving }: {
     <div className="bg-white shadow rounded-lg p-6">
       <h3 className="text-base font-semibold text-gray-900 mb-1">Role Access</h3>
       <p className="text-sm text-gray-500 mb-4">
-        Only Knack users whose role table is checked below will see the snap widget.
+        Choose which Knack users can see the snap widget.
       </p>
       <div className="space-y-2 mb-6">
-        {connection.roles.map((role: KnackRole) => (
+        {/* All users wildcard */}
+        <button
+          onClick={toggleAll}
+          className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg border-2 transition-colors ${
+            allUsers ? 'border-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
+          }`}
+        >
+          <div className={`h-5 w-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${
+            allUsers ? 'bg-blue-600 border-blue-600' : 'border-gray-300'
+          }`}>
+            {allUsers && (
+              <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+              </svg>
+            )}
+          </div>
+          <div className="text-left">
+            <p className="text-sm font-medium text-gray-900">All authenticated users</p>
+            <p className="text-xs text-gray-400">Any logged-in Knack user, regardless of role</p>
+          </div>
+        </button>
+
+        {/* Individual role tables — disabled when allUsers is on */}
+        {!allUsers && connection.roles.map((role: KnackRole) => (
           <button
             key={role.key}
             onClick={() => toggle(role.key)}

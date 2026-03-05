@@ -1106,23 +1106,42 @@
         return;
       }
 
-      var knackUser = getKnackUser();
-      var knackRole = knackUser ? getKnackRoleKey(knackUser) : null;
-
-      if (!knackUser || !knackRole) {
-        // Retry once after 2s (user may still be authenticating)
-        setTimeout(function () {
-          knackUser = getKnackUser();
-          knackRole = knackUser ? getKnackRoleKey(knackUser) : null;
-          if (knackUser && knackRole) {
-            authenticate(knackUser, knackRole);
-          } else {
-            console.info('[Snap4Knack] No authenticated Knack user detected. Widget not shown.');
-          }
-        }, 2000);
+    // Wait for Knack to be available (up to 10s)
+    waitForKnack(10000, function (found) {
+      if (!found) {
+        console.warn('[Snap4Knack] Knack not detected on this page. Widget not mounted.');
         return;
       }
-      authenticate(knackUser, knackRole);
+
+      function tryMount() {
+        var knackUser = getKnackUser();
+        var knackRole = knackUser ? (getKnackRoleKey(knackUser) || 'authenticated') : null;
+        if (knackUser) {
+          authenticate(knackUser, knackRole);
+        }
+      }
+
+      // Primary: listen for Knack's session-authenticated event (fired after login)
+      if (global.jQuery) {
+        global.jQuery(document).on('knack-session-authenticated.snap4knack', function () {
+          tryMount();
+        });
+      }
+
+      // Also try immediately and keep polling up to 12s in case session is already live
+      var attempts = 0;
+      var poll = setInterval(function () {
+        attempts++;
+        var knackUser = getKnackUser();
+        if (knackUser) {
+          clearInterval(poll);
+          var knackRole = getKnackRoleKey(knackUser) || 'authenticated';
+          authenticate(knackUser, knackRole);
+        } else if (attempts >= 60) { // 60 × 200ms = 12s
+          clearInterval(poll);
+          console.info('[Snap4Knack] No authenticated Knack user detected. Widget not shown.');
+        }
+      }, 200);
     });
   }
 

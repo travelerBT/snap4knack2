@@ -233,9 +233,10 @@ export const issueWidgetToken = functions.https.onCall(
       throw new functions.https.HttpsError("not-found", "Plugin not found or inactive.");
     }
 
-    // Check role is in selectedRoles
+    // Check role is in selectedRoles. Empty array or '*' means allow all authenticated users.
     const selectedRoles: string[] = pluginDoc.data()?.selectedRoles || [];
-    if (!selectedRoles.includes(knackUserRole)) {
+    const allowAll = selectedRoles.length === 0 || selectedRoles.includes('*');
+    if (!allowAll && !selectedRoles.includes(knackUserRole)) {
       throw new functions.https.HttpsError("permission-denied", "User role not authorized for this plugin.");
     }
 
