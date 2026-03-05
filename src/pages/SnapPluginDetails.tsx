@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { doc, getDoc, updateDoc, collection, getDocs, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, collection, getDocs, query, where, serverTimestamp } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
@@ -46,7 +46,7 @@ export default function SnapPluginDetails() {
     const load = async () => {
       const [pluginDoc, invSnap] = await Promise.all([
         getDoc(doc(db, 'tenants', tenantId, 'snapPlugins', id)),
-        getDocs(collection(db, 'client_invitations')),
+        getDocs(query(collection(db, 'client_invitations'), where('tenantId', '==', tenantId))),
       ]);
       if (pluginDoc.exists()) {
         const p = { id: pluginDoc.id, ...pluginDoc.data() } as SnapPlugin;
@@ -55,7 +55,7 @@ export default function SnapPluginDetails() {
         if (connDoc.exists()) setConnection({ id: connDoc.id, ...connDoc.data() } as Connection);
       }
       const pluginInvitations = invSnap.docs
-        .filter((d) => d.data().pluginIds?.includes(id) && d.data().tenantId === tenantId)
+        .filter((d) => d.data().pluginIds?.includes(id))
         .map((d) => ({ id: d.id, ...d.data() } as ClientInvitation));
       setInvitations(pluginInvitations);
       setLoading(false);

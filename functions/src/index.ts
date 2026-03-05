@@ -86,24 +86,33 @@ export const fetchKnackRoles = functions.https.onCall(
 
     const apiKey = await getKnackApiKey(secretName);
 
-    // Fetch all objects from Knack API
+    // Fetch all objects (fields are NOT included in this response)
     const res = await axios.get(`https://api.knack.com/v1/objects`, {
       headers: { "X-Knack-Application-Id": appId, "X-Knack-REST-API-Key": apiKey },
     });
 
-    const rawObjects: Array<{
-      key: string; name: string;
-      fields: Array<{ key: string; name: string; type: string }>;
-    }> = res.data.objects || [];
+    const rawObjects: Array<{ key: string; name: string }> = res.data.objects || [];
 
-    // Role objects are those with at least one 'password' type field
-    const roles = rawObjects
-      .filter((obj) => obj.fields?.some((f) => f.type === "password"))
+    // Fetch fields for every object — /v1/objects doesn't include them
+    const withFields = await Promise.all(
+      rawObjects.map(async (obj) => {
+        try {
+          const fRes = await axios.get(`https://api.knack.com/v1/objects/${obj.key}/fields`, {
+            headers: { "X-Knack-Application-Id": appId, "X-Knack-REST-API-Key": apiKey },
+          });
+          return { ...obj, fields: (fRes.data.fields || []) as Array<{ type: string }> };
+        } catch {
+          return { ...obj, fields: [] as Array<{ type: string }> };
+        }
+      })
+    );
+
+    // Role tables have a 'password' type field
+    const roles = withFields
+      .filter((obj) => obj.fields.some((f) => f.type === "password"))
       .map((obj) => ({ key: obj.key, name: obj.name }));
 
-    // Simplified object list (no fields) for the connection record
     const objects = rawObjects.map((obj) => ({ key: obj.key, name: obj.name }));
-
     // Fetch app name
     let appName = "";
     try {
