@@ -6,17 +6,29 @@ service firebase.storage {
       return request.auth != null;
     }
 
-    // Snap screenshots and recordings
-    match /snaps/{pluginId}/{submissionId}/{fileName} {
-      // Widget users with matching pluginId claim can upload
+    // Snap screenshots uploaded by the widget (uses idToken with custom claims)
+    match /snap_screenshots/{tenantId}/{fileName} {
       allow create: if isAuthenticated() &&
-        request.auth.token.pluginId == pluginId &&
-        request.resource.size < 20 * 1024 * 1024; // 20MB max
-
-      // Authenticated users (tenant, client with access) can read
+        request.auth.token.tenantId == tenantId &&
+        request.resource.size < 20 * 1024 * 1024;
       allow read: if isAuthenticated();
+      allow delete: if isAuthenticated() && request.auth.token.tenantId == tenantId;
+    }
 
-      // Only tenant admins can delete
+    // Snap recordings uploaded by the widget
+    match /snap_recordings/{tenantId}/{fileName} {
+      allow create: if isAuthenticated() &&
+        request.auth.token.tenantId == tenantId &&
+        request.resource.size < 100 * 1024 * 1024;
+      allow read: if isAuthenticated();
+      allow delete: if isAuthenticated() && request.auth.token.tenantId == tenantId;
+    }
+
+    // Legacy path (keep for backwards compat)
+    match /snaps/{pluginId}/{submissionId}/{fileName} {
+      allow create: if isAuthenticated() &&
+        request.resource.size < 20 * 1024 * 1024;
+      allow read: if isAuthenticated();
       allow delete: if isAuthenticated();
     }
 

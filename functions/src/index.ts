@@ -259,6 +259,55 @@ export const issueWidgetToken = functions.https.onRequest(
   }
 );
 
+// ── submitSnap ────────────────────────────────────────────────────────────────
+// Plain onRequest so the widget (which holds a Firebase ID token, not an SDK
+// session) can POST snaps directly.
+
+export const submitSnap = functions.https.onRequest(
+  { cors: true },
+  async (req, res) => {
+    if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+    if (req.method !== "POST") { res.status(405).json({ error: "Method not allowed" }); return; }
+
+    // Verify the Firebase ID token sent in the Authorization header
+    const authHeader = req.headers.authorization || "";
+    const idToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+    if (!idToken) { res.status(401).json({ error: "Missing auth token" }); return; }
+
+    let decoded;
+    try {
+      decoded = await auth.verifyIdToken(idToken);
+    } catch {
+      res.status(401).json({ error: "Invalid auth token" }); return;
+    }
+
+    const { tenantId, pluginId, knackUserId, knackUserRole } = decoded as Record<string, string>;
+    if (!tenantId || !pluginId) { res.status(400).json({ error: "Token missing claims" }); return; }
+
+    const body = req.body as Record<string, unknown>;
+
+    const submission = {
+      tenantId,
+      pluginId,
+      knackUserId: knackUserId || null,
+      knackUserRole: knackUserRole || null,
+      type: body.type || "full",
+      screenshotUrl: body.screenshotUrl || null,
+      recordingUrl: body.recordingUrl || null,
+      annotationData: body.annotationData || null,
+      consoleErrors: body.consoleErrors || [],
+      formData: body.formData || {},
+      context: body.context || {},
+      priority: body.priority || "medium",
+      status: "open",
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
+
+    const docRef = await db.collection("snap_submissions").add(submission);
+    res.json({ id: docRef.id });
+  }
+);
+
 // ── Firestore trigger: notify on new snap ────────────────────────────────────
 
 export const onSnapCreated = functions.firestore.onDocumentCreated(
