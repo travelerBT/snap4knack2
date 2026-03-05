@@ -14,7 +14,7 @@
   if (global.Snap4KnackLoader) return; // prevent double-load
 
   var BASE_URL = 'https://snap4knack2.web.app';
-  var WIDGET_BUNDLE = BASE_URL + '/widget/snap4knack.js?v=2';
+  var WIDGET_BUNDLE = BASE_URL + '/widget/snap4knack.js?v=3';
   var _config = null;
   var _loaded = false;
 

@@ -110,13 +110,24 @@
     if (!K) return null;
     var user = null;
     try {
-      // v3 API
-      if (K.getUserToken) {
-        user = K.session && K.session.user;
+      // Path 1: K.session.user (most common in v3)
+      if (K.session && K.session.user && K.session.user.id) {
+        user = K.session.user;
       }
-      // Fallback: check Knack.user_token or Knack.user
-      if (!user && K.user) user = K.user;
-    } catch (e) {}
+      // Path 2: K.getUserAttributes()
+      if (!user && K.getUserAttributes) {
+        var attrs = K.getUserAttributes();
+        if (attrs && attrs.id) user = attrs;
+      }
+      // Path 3: K.user
+      if (!user && K.user && K.user.id) user = K.user;
+      // Path 4: K.getUserToken exists = someone IS logged in, use session regardless
+      if (!user && K.getUserToken && K.getUserToken()) {
+        user = (K.session && K.session.user) || { id: 'knack-user', email: '', profile_keys: [] };
+      }
+    } catch (e) {
+      console.warn('[Snap4Knack] getKnackUser error:', e);
+    }
     return user || null;
   }
 
@@ -1105,11 +1116,14 @@
         console.warn('[Snap4Knack] Knack not detected on this page. Widget not mounted.');
         return;
       }
+      console.log('[Snap4Knack] Knack detected. Waiting for session...');
 
       function tryMount() {
         var knackUser = getKnackUser();
-        var knackRole = knackUser ? (getKnackRoleKey(knackUser) || 'authenticated') : null;
+        console.log('[Snap4Knack] tryMount — user:', knackUser ? (knackUser.email || knackUser.id || 'found') : 'null');
         if (knackUser) {
+          var knackRole = getKnackRoleKey(knackUser) || 'authenticated';
+          console.log('[Snap4Knack] Authenticating with role:', knackRole);
           authenticate(knackUser, knackRole);
         }
       }
@@ -1117,6 +1131,7 @@
       // Primary: listen for Knack's session-authenticated event (fired after login)
       if (global.jQuery) {
         global.jQuery(document).on('knack-session-authenticated.snap4knack', function () {
+          console.log('[Snap4Knack] knack-session-authenticated event fired');
           tryMount();
         });
       }
@@ -1129,10 +1144,19 @@
         if (knackUser) {
           clearInterval(poll);
           var knackRole = getKnackRoleKey(knackUser) || 'authenticated';
+          console.log('[Snap4Knack] Poll found user after', attempts * 200, 'ms. Role:', knackRole);
           authenticate(knackUser, knackRole);
         } else if (attempts >= 60) { // 60 × 200ms = 12s
           clearInterval(poll);
-          console.info('[Snap4Knack] No authenticated Knack user detected. Widget not shown.');
+          console.warn('[Snap4Knack] No authenticated Knack user after 12s. Knack session dump:',
+            global.Knack ? {
+              hasSession: !!global.Knack.session,
+              sessionUser: global.Knack.session && global.Knack.session.user,
+              hasGetUserToken: !!global.Knack.getUserToken,
+              token: global.Knack.getUserToken ? global.Knack.getUserToken() : 'n/a',
+              hasUser: !!global.Knack.user
+            } : 'Knack not on window'
+          );
         }
       }, 200);
     });
