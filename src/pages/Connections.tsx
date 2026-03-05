@@ -254,6 +254,7 @@ export default function Connections() {
                     <label className="block text-sm font-medium text-gray-700 mb-1">Knack API Key</label>
                     <input
                       type="password"
+                      autoComplete="off"
                       value={apiKey}
                       onChange={(e) => setApiKey(e.target.value)}
                       className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm font-mono"
