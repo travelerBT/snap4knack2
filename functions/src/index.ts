@@ -91,17 +91,31 @@ export const fetchKnackRoles = functions.https.onCall(
       headers: { "X-Knack-Application-Id": appId, "X-Knack-REST-API-Key": apiKey },
     });
 
-    const objects: Array<{
+    const rawObjects: Array<{
       key: string; name: string;
       fields: Array<{ key: string; name: string; type: string }>;
     }> = res.data.objects || [];
 
     // Role objects are those with at least one 'password' type field
-    const roles = objects
+    const roles = rawObjects
       .filter((obj) => obj.fields?.some((f) => f.type === "password"))
       .map((obj) => ({ key: obj.key, name: obj.name }));
 
-    return { roles };
+    // Simplified object list (no fields) for the connection record
+    const objects = rawObjects.map((obj) => ({ key: obj.key, name: obj.name }));
+
+    // Fetch app name
+    let appName = "";
+    try {
+      const appRes = await axios.get(`https://api.knack.com/v1/application`, {
+        headers: { "X-Knack-Application-Id": appId, "X-Knack-REST-API-Key": apiKey },
+      });
+      appName = appRes.data?.application?.name || appRes.data?.name || "";
+    } catch {
+      // optional — not a fatal error
+    }
+
+    return { roles, objects, appName };
   }
 );
 

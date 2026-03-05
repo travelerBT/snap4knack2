@@ -102,18 +102,19 @@ export default function Connections() {
       });
       const connectionId = connRef.id;
 
-      // Store API key in Secret Manager
-      const storeKey = httpsCallable(functions, 'storeKnackApiKey');
-      await storeKey({ connectionId, tenantId, appId: appId.trim(), apiKey: apiKey.trim() });
+      // Store API key in Secret Manager — capture returned secretName
+      const storeKey = httpsCallable<unknown, { secretName: string }>(functions, 'storeKnackApiKey');
+      const storeResult = await storeKey({ connectionId, tenantId, appId: appId.trim(), apiKey: apiKey.trim() });
+      const secretName = storeResult.data.secretName;
 
       // Discover roles
-      const fetchRoles = httpsCallable<{ connectionId: string }, DiscoveryResult>(functions, 'fetchKnackRoles');
-      const result = await fetchRoles({ connectionId });
+      const fetchRoles = httpsCallable<{ appId: string; secretName: string }, DiscoveryResult>(functions, 'fetchKnackRoles');
+      const result = await fetchRoles({ appId: appId.trim(), secretName });
       setDiscovery(result.data);
 
       // Update connection doc with secret name and roles
       await updateDoc(doc(db, 'tenants', tenantId, 'connections', connectionId), {
-        secretName: `knack_api_key_${tenantId}_${connectionId}`,
+        secretName,
         roles: result.data.roles,
         objects: result.data.objects,
         appName: result.data.appName || '',
