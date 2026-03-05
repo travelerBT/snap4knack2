@@ -216,31 +216,36 @@ export const acceptInvitation = functions.https.onCall(
 );
 
 // ── issueWidgetToken ─────────────────────────────────────────────────────────
+// Plain onRequest (not onCall) so the unauthenticated Knack widget can call it
+// without a Firebase Auth token or the onCall { data:{}  } wrapper.
 
-export const issueWidgetToken = functions.https.onCall(
-  { enforceAppCheck: false },
-  async (request) => {
-    const { pluginId, tenantId, knackUserId, knackUserRole } = request.data as {
+export const issueWidgetToken = functions.https.onRequest(
+  { cors: true },
+  async (req, res) => {
+    if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+    if (req.method !== "POST") { res.status(405).json({ error: "Method not allowed" }); return; }
+
+    const { pluginId, tenantId, knackUserId, knackUserRole } = req.body as {
       pluginId: string; tenantId: string; knackUserId: string; knackUserRole: string;
     };
     if (!pluginId || !tenantId || !knackUserId) {
-      throw new functions.https.HttpsError("invalid-argument", "Missing required widget params.");
+      res.status(400).json({ error: "Missing required widget params." }); return;
     }
 
     // Verify plugin exists and is active
     const pluginDoc = await db.collection("tenants").doc(tenantId).collection("snapPlugins").doc(pluginId).get();
     if (!pluginDoc.exists || pluginDoc.data()?.status !== "active") {
-      throw new functions.https.HttpsError("not-found", "Plugin not found or inactive.");
+      res.status(404).json({ error: "Plugin not found or inactive." }); return;
     }
 
     // Check role is in selectedRoles. Empty array or '*' means allow all authenticated users.
     const selectedRoles: string[] = pluginDoc.data()?.selectedRoles || [];
-    const allowAll = selectedRoles.length === 0 || selectedRoles.includes('*');
+    const allowAll = selectedRoles.length === 0 || selectedRoles.includes("*");
     if (!allowAll && !selectedRoles.includes(knackUserRole)) {
-      throw new functions.https.HttpsError("permission-denied", "User role not authorized for this plugin.");
+      res.status(403).json({ error: "User role not authorized for this plugin." }); return;
     }
 
-    // Issue anonymous custom token tied to Knack user
+    // Issue custom token tied to Knack user
     const widgetUid = `widget-${tenantId}-${knackUserId}`;
     const token = await auth.createCustomToken(widgetUid, {
       role: "widget",
@@ -250,7 +255,7 @@ export const issueWidgetToken = functions.https.onCall(
       knackUserRole,
     });
 
-    return { token };
+    res.json({ token });
   }
 );
 

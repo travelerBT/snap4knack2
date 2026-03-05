@@ -5,8 +5,8 @@
  */
 ;(function (global) {
   'use strict';
-
-  if (global.Snap4Knack) return;
+  console.log('[Snap4Knack] snap4knack.js IIFE running');
+  if (global.Snap4Knack) { console.log('[Snap4Knack] already loaded, returning'); return; }
 
   // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -104,56 +104,27 @@
 
   // ── Knack user detection ───────────────────────────────────────────────────
 
-  function getKnackUser() {
-    // Knack exposes the logged-in user on window.Knack
-    var K = global.Knack;
-    if (!K) return null;
-    var user = null;
-    try {
-      // Path 1: K.session.user (most common in v3)
-      if (K.session && K.session.user && K.session.user.id) {
-        user = K.session.user;
-      }
-      // Path 2: K.getUserAttributes()
-      if (!user && K.getUserAttributes) {
-        var attrs = K.getUserAttributes();
-        if (attrs && attrs.id) user = attrs;
-      }
-      // Path 3: K.user
-      if (!user && K.user && K.user.id) user = K.user;
-      // Path 4: K.getUserToken exists = someone IS logged in, use session regardless
-      if (!user && K.getUserToken && K.getUserToken()) {
-        user = (K.session && K.session.user) || { id: 'knack-user', email: '', profile_keys: [] };
-      }
-    } catch (e) {
-      console.warn('[Snap4Knack] getKnackUser error:', e);
+  // Normalize roles from any Knack user object shape
+  function getRoles(user) {
+    var roles = user.roles || user.profileKeys || user.profile_keys || [];
+    if (roles.length > 0 && typeof roles[0] === 'object') {
+      return roles.map(function (r) { return r.key || r.name || r.id || r; });
     }
-    return user || null;
-  }
-
-  function getKnackRoleKey(knackUser) {
-    if (!knackUser) return null;
-    // Knack user objects have a `profile_keys` array or `roles` array containing object keys like 'object_X'
-    var keys = [];
-    if (knackUser.profile_keys && knackUser.profile_keys.length) {
-      keys = knackUser.profile_keys;
-    } else if (knackUser.roles && knackUser.roles.length) {
-      keys = knackUser.roles.map(function(r){ return r.id || r; });
-    }
-    return keys.length ? keys[0] : null;
+    return roles;
   }
 
   // ── Auth: request widget token from Cloud Function ─────────────────────────
 
   function getWidgetToken(pluginId, tenantId, knackUserId, knackUserRole) {
+    // onRequest — send data directly, response is { token: "..." }
     return req('POST', FUNCTIONS_BASE + '/issueWidgetToken', {
       pluginId: pluginId,
       tenantId: tenantId,
       knackUserId: knackUserId,
       knackUserRole: knackUserRole,
-    }).then(function (data) {
+    }).then(function (resp) {
       // Exchange custom token for Firebase ID token
-      return exchangeCustomToken(data.token);
+      return exchangeCustomToken(resp.token);
     });
   }
 
@@ -1086,22 +1057,6 @@
     document.head.appendChild(s);
   }
 
-  // ── Wait for Knack ─────────────────────────────────────────────────────────
-
-  function waitForKnack(timeout, cb) {
-    var elapsed = 0;
-    var interval = setInterval(function () {
-      elapsed += 200;
-      if (global.Knack) {
-        clearInterval(interval);
-        cb(true);
-      } else if (elapsed >= timeout) {
-        clearInterval(interval);
-        cb(false);
-      }
-    }, 200);
-  }
-
   // ── Mount ──────────────────────────────────────────────────────────────────
 
   function mount(config) {
@@ -1110,63 +1065,58 @@
     state.position = config.position || 'bottom-right';
     state.categories = config.categories || ['Bug', 'Feature Request', 'Question', 'Other'];
 
-    // Wait for Knack to be available then poll for session
-    waitForKnack(10000, function (found) {
-      if (!found) {
-        console.warn('[Snap4Knack] Knack not detected on this page. Widget not mounted.');
-        return;
-      }
-      console.log('[Snap4Knack] Knack detected. Waiting for session...');
+    var mounted = false;
 
-      function tryMount() {
-        var knackUser = getKnackUser();
-        console.log('[Snap4Knack] tryMount — user:', knackUser ? (knackUser.email || knackUser.id || 'found') : 'null');
-        if (knackUser) {
-          var knackRole = getKnackRoleKey(knackUser) || 'authenticated';
-          console.log('[Snap4Knack] Authenticating with role:', knackRole);
-          authenticate(knackUser, knackRole);
+    function doMount(user) {
+      if (mounted) return;
+      mounted = true;
+      var roles = getRoles(user);
+      var knackRole = roles.length ? roles[0] : 'authenticated';
+      console.log('[Snap4Knack] User found. id:', user.id, 'role:', knackRole);
+      authenticate(user, knackRole);
+    }
+
+    // Poll every 300ms for Knack to appear (mirrors Chat4Knack approach)
+    var poll = setInterval(function () {
+      if (typeof global.Knack === 'undefined') return;
+
+      // Classic Knack API
+      if (typeof global.Knack.getUserAttributes === 'function') {
+        var user = global.Knack.getUserAttributes();
+        if (user && user.id) {
+          clearInterval(poll);
+          var token = (typeof global.Knack.getUserToken === 'function') ? (global.Knack.getUserToken() || '') : '';
+          doMount({ id: user.id, name: user.name, email: user.email, roles: getRoles(user), token: token });
+          return;
         }
       }
 
-      // Primary: listen for Knack's session-authenticated event (fired after login)
-      if (global.jQuery) {
-        global.jQuery(document).on('knack-session-authenticated.snap4knack', function () {
-          console.log('[Snap4Knack] knack-session-authenticated event fired');
-          tryMount();
-        });
+      // Next-Gen Knack API (Promise-based)
+      if (typeof global.Knack.getUser === 'function' && !mounted) {
+        clearInterval(poll);
+        var fetchUser = function () {
+          global.Knack.getUser().then(function (user) {
+            if (!user || !user.id) { setTimeout(fetchUser, 1000); return; }
+            doMount({ id: user.id, name: user.name || user.email, email: user.email || '', roles: getRoles(user), token: user.token || '' });
+          }).catch(function () { setTimeout(fetchUser, 2000); });
+        };
+        (typeof global.Knack.ready === 'function') ? global.Knack.ready().then(fetchUser) : fetchUser();
       }
+    }, 300);
 
-      // Also try immediately and keep polling up to 12s in case session is already live
-      var attempts = 0;
-      var poll = setInterval(function () {
-        attempts++;
-        var knackUser = getKnackUser();
-        if (knackUser) {
-          clearInterval(poll);
-          var knackRole = getKnackRoleKey(knackUser) || 'authenticated';
-          console.log('[Snap4Knack] Poll found user after', attempts * 200, 'ms. Role:', knackRole);
-          authenticate(knackUser, knackRole);
-        } else if (attempts >= 60) { // 60 × 200ms = 12s
-          clearInterval(poll);
-          console.warn('[Snap4Knack] No authenticated Knack user after 12s. Knack session dump:',
-            global.Knack ? {
-              hasSession: !!global.Knack.session,
-              sessionUser: global.Knack.session && global.Knack.session.user,
-              hasGetUserToken: !!global.Knack.getUserToken,
-              token: global.Knack.getUserToken ? global.Knack.getUserToken() : 'n/a',
-              hasUser: !!global.Knack.user
-            } : 'Knack not on window'
-          );
-        }
-      }, 200);
-    });
+    // Stop polling after 60 seconds
+    setTimeout(function () {
+      if (!mounted) {
+        clearInterval(poll);
+        console.warn('[Snap4Knack] No authenticated Knack user found after 60s.');
+      }
+    }, 60000);
   }
 
   function authenticate(knackUser, knackRole) {
     state.knackUser = knackUser;
     state.knackRole = knackRole;
     var userId = knackUser.id || knackUser.email || 'anonymous';
-
     getWidgetToken(state.config.pluginId, state.config.tenantId, userId, knackRole)
       .then(function (idToken) {
         state.idToken = idToken;

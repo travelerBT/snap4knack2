@@ -4,7 +4,7 @@
  * Usage: paste into Knack app JS area
  *
  * (function(){var s=document.createElement('script');
- * s.src='https://snap4knack2.web.app/widget/loader.js?v=1';
+ * s.src='https://snap4knack2.web.app/widget/loader.js';
  * s.onload=function(){Snap4KnackLoader.init({pluginId:'...',tenantId:'...',appId:'...'})};
  * document.head.appendChild(s)})();
  */
@@ -14,7 +14,7 @@
   if (global.Snap4KnackLoader) return; // prevent double-load
 
   var BASE_URL = 'https://snap4knack2.web.app';
-  var WIDGET_BUNDLE = BASE_URL + '/widget/snap4knack.js?v=3';
+  var WIDGET_BUNDLE = BASE_URL + '/widget/snap4knack.js?v=' + Date.now();
   var _config = null;
   var _loaded = false;
 
@@ -34,6 +34,7 @@
   }
 
   function init(config) {
+    console.log('[Snap4Knack] loader init() called', config);
     if (!config || !config.pluginId || !config.tenantId || !config.appId) {
       console.warn('[Snap4Knack] init() requires pluginId, tenantId, and appId');
       return;
@@ -46,8 +47,10 @@
       return;
     }
 
+    console.log('[Snap4Knack] loading bundle:', WIDGET_BUNDLE);
     loadScript(WIDGET_BUNDLE, function () {
       _loaded = true;
+      console.log('[Snap4Knack] bundle loaded, Snap4Knack on window:', !!global.Snap4Knack);
       if (global.Snap4Knack) {
         global.Snap4Knack.mount(_config);
       } else {

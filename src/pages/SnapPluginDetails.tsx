@@ -116,7 +116,7 @@ export default function SnapPluginDetails() {
 
   const copyEmbed = () => {
     if (!plugin || !connection) return;
-    const code = `(function(){var s=document.createElement('script');\ns.src='${WIDGET_BASE_URL}/widget/loader.js?v=1';\ns.onload=function(){Snap4KnackLoader.init({\n  pluginId:'${plugin.id}',tenantId:'${tenantId}',appId:'${connection.appId}'\n})};document.head.appendChild(s)})();`;
+    const code = `(function(){var s=document.createElement('script');\ns.src='${WIDGET_BASE_URL}/widget/loader.js';\ns.onload=function(){Snap4KnackLoader.init({\n  pluginId:'${plugin.id}',tenantId:'${tenantId}',appId:'${connection.appId}'\n})};document.head.appendChild(s)})();`;
     navigator.clipboard.writeText(code).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
@@ -148,7 +148,7 @@ export default function SnapPluginDetails() {
         <div className="flex items-start justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">{plugin.name}</h1>
-            <p className="text-sm text-gray-400 mt-1">{connection?.name} · {plugin.selectedRoles.length} role{plugin.selectedRoles.length !== 1 ? 's' : ''}</p>
+            <p className="text-sm text-gray-400 mt-1">{connection?.name} · {plugin.selectedRoles.includes('*') ? 'All users' : `${plugin.selectedRoles.length} role${plugin.selectedRoles.length !== 1 ? 's' : ''}`}</p>
           </div>
           <button
             onClick={toggleStatus}
@@ -229,7 +229,7 @@ export default function SnapPluginDetails() {
           <div className="relative">
             <pre className="bg-gray-900 text-green-400 text-xs rounded-lg p-4 overflow-x-auto leading-relaxed">
 {`(function(){var s=document.createElement('script');
-s.src='${WIDGET_BASE_URL}/widget/loader.js?v=1';
+s.src='${WIDGET_BASE_URL}/widget/loader.js';
 s.onload=function(){Snap4KnackLoader.init({
   pluginId:'${plugin.id}',tenantId:'${tenantId}',appId:'${connection.appId}'
 })};document.head.appendChild(s)})();`}
