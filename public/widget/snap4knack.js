@@ -1099,14 +1099,7 @@
     state.position = config.position || 'bottom-right';
     state.categories = config.categories || ['Bug', 'Feature Request', 'Question', 'Other'];
 
-    // Wait for Knack to be available (up to 10s)
-    waitForKnack(10000, function (found) {
-      if (!found) {
-        console.warn('[Snap4Knack] Knack not detected on this page. Widget not mounted.');
-        return;
-      }
-
-    // Wait for Knack to be available (up to 10s)
+    // Wait for Knack to be available then poll for session
     waitForKnack(10000, function (found) {
       if (!found) {
         console.warn('[Snap4Knack] Knack not detected on this page. Widget not mounted.');
