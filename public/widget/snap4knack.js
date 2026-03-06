@@ -957,14 +957,26 @@
     descLabel.appendChild(descTA);
     wrap.appendChild(descLabel);
 
-    // Console errors indicator
-    if (state.captureType !== MODES.CONSOLE && state.consoleErrors.length > 0) {
+    // Include Console checkbox — shown for all non-console snaps, unchecked by default
+    if (state.captureType !== MODES.CONSOLE) {
       var consoleChk = el('label', '');
-      css(consoleChk, { display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '12px', color: '#374151' });
+      css(consoleChk, {
+        display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer',
+        fontSize: '12px', color: '#374151', padding: '8px 10px',
+        border: '1px solid #d1d5db', borderRadius: '6px', background: '#f9fafb',
+      });
       var chk = document.createElement('input');
-      chk.type = 'checkbox'; chk.id = 's4k-attach-console'; chk.checked = true;
+      chk.type = 'checkbox';
+      chk.id = 's4k-attach-console';
+      chk.checked = false;
+      var countLabel = state.consoleErrors.length > 0
+        ? 'Include Console (' + state.consoleErrors.length + ' entries)'
+        : 'Include Console';
       consoleChk.appendChild(chk);
-      consoleChk.appendChild(document.createTextNode('Attach console errors (' + state.consoleErrors.length + ')'));
+      var iconSpan = el('span', '', '&#8964;'); // terminal-ish icon
+      css(iconSpan, { fontSize: '14px', lineHeight: '1' });
+      consoleChk.appendChild(iconSpan);
+      consoleChk.appendChild(document.createTextNode(' ' + countLabel));
       wrap.appendChild(consoleChk);
     }
 
