@@ -140,7 +140,7 @@ export const inviteClient = functions.https.onCall(
       throw new functions.https.HttpsError("invalid-argument", "email and pluginIds are required.");
     }
 
-    // Create invitation doc
+    // Create invitation doc first — this always succeeds regardless of email
     const token = Array.from(crypto.getRandomValues(new Uint8Array(16)))
       .map((b) => b.toString(16).padStart(2, "0"))
       .join("");
@@ -156,23 +156,42 @@ export const inviteClient = functions.https.onCall(
       expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
     });
 
+    const inviteUrl = `${APP_DOMAIN}/accept-invite?token=${token}&id=${invRef.id}`;
+
     // Get tenant info for email
     const tenantDoc = await db.collection("tenants").doc(tenantId).get();
-    const tenantName = tenantDoc.data()?.name || "Your Team";
+    const tenantName = tenantDoc.data()?.name || tenantDoc.data()?.companyName || "Your Team";
 
-    // Send invite email
+    // Send invite email — non-fatal: invitation is created regardless
+    let emailSent = false;
+    let emailError = "";
     const key = await getSendGridKey();
     if (key) {
-      sgMail.setApiKey(key);
-      const mailOpts = clientInvitationEmail({
-        recipientEmail: email,
-        tenantName,
-        inviteUrl: `${APP_DOMAIN}/accept-invite?token=${token}&id=${invRef.id}`,
-      });
-      await sgMail.send({ from: SENDGRID_FROM, ...mailOpts });
+      try {
+        sgMail.setApiKey(key);
+        const mailOpts = clientInvitationEmail({
+          recipientEmail: email,
+          tenantName,
+          inviteUrl,
+        });
+        await sgMail.send({ from: SENDGRID_FROM, ...mailOpts });
+        emailSent = true;
+      } catch (err: unknown) {
+        // Log the full SendGrid error details for debugging
+        const sgErr = err as { code?: number; response?: { body?: unknown } };
+        console.error("SendGrid error:", JSON.stringify({
+          code: sgErr.code,
+          body: sgErr.response?.body,
+        }));
+        emailError = sgErr.code === 403
+          ? "Email sender not verified in SendGrid. Invitation created — share the invite link manually."
+          : `Email send failed (code ${sgErr.code}). Invitation created.`;
+      }
+    } else {
+      emailError = "SendGrid key not configured. Invitation created — share the invite link manually.";
     }
 
-    return { invitationId: invRef.id };
+    return { invitationId: invRef.id, inviteUrl, emailSent, emailError };
   }
 );
 

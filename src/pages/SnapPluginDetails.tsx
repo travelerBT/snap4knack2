@@ -14,6 +14,7 @@ import {
   UserPlusIcon,
   TrashIcon,
   ExclamationCircleIcon,
+  LinkIcon,
 } from '@heroicons/react/24/outline';
 import type { SnapPlugin, Connection, ClientInvitation, KnackRole } from '../types';
 import { WIDGET_BASE_URL } from '../config/constants';
@@ -42,6 +43,9 @@ export default function SnapPluginDetails() {
   const [modal, setModal] = useState({ open: false, type: 'success' as 'success' | 'error', title: '', message: '' });
   // Confirm revoke modal
   const [revokeConfirm, setRevokeConfirm] = useState<{ open: boolean; invId: string }>({ open: false, invId: '' });
+  // Invite URL fallback (when email send fails)
+  const [inviteUrlModal, setInviteUrlModal] = useState<{ open: boolean; url: string; emailError: string }>({ open: false, url: '', emailError: '' });
+  const [inviteUrlCopied, setInviteUrlCopied] = useState(false);
 
   useEffect(() => {
     if (!tenantId || !id) return;
@@ -94,10 +98,14 @@ export default function SnapPluginDetails() {
     if (!inviteEmail.trim() || !id) return;
     setInviting(true);
     try {
-      const inviteClient = httpsCallable(functions, 'inviteClient');
-      await inviteClient({ email: inviteEmail.trim(), pluginIds: [id] });
+      const inviteClientFn = httpsCallable<
+        { email: string; pluginIds: string[] },
+        { invitationId: string; inviteUrl: string; emailSent: boolean; emailError: string }
+      >(functions, 'inviteClient');
+      const result = await inviteClientFn({ email: inviteEmail.trim(), pluginIds: [id] });
+      const { invitationId, inviteUrl, emailSent, emailError } = result.data;
       const newInv: ClientInvitation = {
-        id: Date.now().toString(),
+        id: invitationId,
         email: inviteEmail.trim(),
         tenantId,
         pluginIds: [id],
@@ -107,7 +115,12 @@ export default function SnapPluginDetails() {
       };
       setInvitations((prev) => [newInv, ...prev]);
       setInviteEmail('');
-      setModal({ open: true, type: 'success', title: 'Invitation sent', message: `An invite was sent to ${inviteEmail.trim()}.` });
+      if (emailSent) {
+        setModal({ open: true, type: 'success', title: 'Invitation sent', message: `An invite email was sent to ${newInv.email}.` });
+      } else {
+        // Email failed — show invite URL so it can be shared manually
+        setInviteUrlModal({ open: true, url: inviteUrl, emailError });
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to send invite.';
       setModal({ open: true, type: 'error', title: 'Invite failed', message: msg });
@@ -288,6 +301,51 @@ s.onload=function(){Snap4KnackLoader.init({
         />
       )}
 
+      {/* Invite URL fallback modal */}
+      {inviteUrlModal.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-40">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="flex-shrink-0 rounded-full p-2 bg-yellow-100">
+                <LinkIcon className="h-5 w-5 text-yellow-600" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-base font-semibold text-gray-900">Invitation created — email not sent</h3>
+                <p className="mt-1 text-sm text-gray-500">{inviteUrlModal.emailError}</p>
+              </div>
+            </div>
+            <p className="text-xs font-medium text-gray-500 mb-1">Share this link with the client:</p>
+            <div className="flex items-center gap-2">
+              <input
+                readOnly
+                value={inviteUrlModal.url}
+                className="flex-1 text-xs font-mono bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-gray-700 select-all"
+                onClick={(e) => (e.target as HTMLInputElement).select()}
+              />
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(inviteUrlModal.url);
+                  setInviteUrlCopied(true);
+                  setTimeout(() => setInviteUrlCopied(false), 2000);
+                }}
+                className="flex-shrink-0 bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-2 rounded-lg flex items-center gap-1"
+              >
+                {inviteUrlCopied ? <CheckIcon className="h-3.5 w-3.5" /> : <ClipboardDocumentIcon className="h-3.5 w-3.5" />}
+                {inviteUrlCopied ? 'Copied!' : 'Copy'}
+              </button>
+            </div>
+            <p className="mt-3 text-xs text-gray-400">The link expires in 7 days. To fix email delivery, verify your sender in SendGrid.</p>
+            <div className="mt-5 flex justify-end">
+              <button
+                onClick={() => setInviteUrlModal({ open: false, url: '', emailError: '' })}
+                className="px-4 py-2 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <Modal open={modal.open} type={modal.type} title={modal.title} message={modal.message} onClose={() => setModal((m) => ({ ...m, open: false }))} />
       <Modal
         open={revokeConfirm.open}
