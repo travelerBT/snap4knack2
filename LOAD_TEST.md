@@ -1,6 +1,7 @@
 # Load Test Regiment — Snap4Knack2
 
 **Date:** March 6, 2026  
+**Last Updated:** March 6, 2026 — Security fixes applied in commit `50344d6`; no load characteristic changes required  
 **Scope:** Cloud Functions endpoints, Firebase Hosting, Firestore, Firebase Storage  
 **Tooling recommended:** [k6](https://k6.io), [Artillery](https://www.artillery.io), [Locust](https://locust.io), Firebase emulator suite for safe baseline tests before hitting production  
 **Environment:** Run all destructive tests against a dedicated staging Firebase project (`snap4knack2-staging`) — never against production without explicit consent.
@@ -141,6 +142,8 @@ export default function () {
 
 The `snap_counters/{tenantId}` document is written on **every** snap submission. Firestore supports ~1 write/second per document reliably before contention retries begin. Above that rate, `runTransaction` will retry automatically (up to 5 attempts), adding p99 latency without errors — but latency will degrade sharply above 5 concurrent writers targeting the same tenantId.
 
+> 📝 **Note (commit `50344d6`):** Server-side payload caps added to `submitSnap` (M-03 fix) limit each Firestore document to ≤100 console errors, ≤50 KB annotation data, ≤50 formData keys, ≤20 context keys. This reduces peak document size and slightly decreases per-write Firestore storage bandwidth under adversarial conditions, but does not materially affect hot-key contention at normal load.
+
 **Acceptance criteria:**
 - p95 < 4 s at 30 concurrent submitters against a single tenantId
 - Error rate < 2%
@@ -256,6 +259,8 @@ done
 - Subsequent (warm) calls p95 < 1 s
 
 **Mitigation:** Set `minInstances: 1` on `issueWidgetToken` and `submitSnap` in the function config to eliminate cold starts for the two most user-facing endpoints.
+
+> 🔴 **Open — Not yet applied:** `minInstances: 1` is still a recommendation; not set in current `functions/src/index.ts`. Scheduled for Sprint 2 performance hardening.
 
 ---
 

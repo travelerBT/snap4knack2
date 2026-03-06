@@ -1,6 +1,7 @@
 # Security Audit — Snap4Knack2
 
 **Date:** March 6, 2026  
+**Last Updated:** March 6, 2026 — Fixes applied in commit `50344d6`  
 **Auditor:** Internal static review  
 **Scope:** Full codebase — Cloud Functions (`functions/src/index.ts`), Firestore rules, Storage rules, widget (`public/widget/snap4knack.js`), React SPA, Firebase hosting config, `cors.json`, `package.json` dependency trees
 
@@ -8,13 +9,13 @@
 
 ## Executive Summary
 
-| Severity | Count |
-|----------|-------|
-| Critical | 1 |
-| High     | 6 |
-| Medium   | 7 |
-| Low      | 5 |
-| Info     | 3 |
+| Severity | Count | Fixed | Open |
+|----------|-------|-------|------|
+| Critical | 1     | 1     | 0    |
+| High     | 6     | 2     | 4    |
+| Medium   | 7     | 4     | 3    |
+| Low      | 5     | 1     | 4    |
+| Info     | 3     | 0     | 3    |
 
 The application has a solid authentication spine (Firebase custom tokens, `verifyIdToken` server-side, Firestore security rules) but carries several exploitable gaps across input validation, HTTP header posture, CORS over-breadth, rate-limiting absence, and dependency CVEs.
 
@@ -51,11 +52,15 @@ function he(s: string) {
 ```
 Then use `${he(name)}`, `${he(email)}`, `href="mailto:${he(email)}"`, etc.
 
+> ✅ **Fixed in commit `50344d6` (March 6, 2026):** `he()` helper added to `functions/src/index.ts`; all four `contactForm` fields (`name`, `email`, `company`, `message`) are now HTML-encoded before interpolation into the SendGrid HTML body.
+
 ---
 
 ## HIGH
 
 ### H-01 — No rate limiting on unauthenticated Cloud Functions
+
+> 🔴 **Open — Backlog:** Requires App Check + Cloud Armor or Firestore token bucket; scheduled for Sprint 2.
 
 **Location:** `issueWidgetToken`, `submitSnap`, `contactForm`
 
@@ -73,6 +78,8 @@ All three are `onRequest` functions with `cors: true` and no throttle, quota, or
 ---
 
 ### H-02 — Firebase App Check not enforced
+
+> 🔴 **Open — Backlog:** Requires reCAPTCHA Enterprise registration; scheduled for Sprint 3.
 
 **Location:** `functions/src/index.ts` — all `onCall` exports
 
@@ -108,6 +115,8 @@ allow create: if isAuthenticated() && (
 );
 ```
 
+> ✅ **Fixed in commit `50344d6` (March 6, 2026):** `firestore.rules` `snap_submissions` create rule now enforces `request.resource.data.tenantId == request.auth.uid` for tenant direct uploads, or widget token claims (`snap_tenantId` + `snap_pluginId`) must match for widget uploads. Also added an explicit `allow read, write: if false` rule on `snap_counters/{tenantId}`.
+
 ---
 
 ### H-04 — `knackUserRole` is fully client-supplied and unverified
@@ -117,6 +126,8 @@ allow create: if isAuthenticated() && (
 The widget reads `knackUserRole` from `Knack.getUserAttributes()` or `Knack.getUser()` on the client side and sends it untouched to `issueWidgetToken`. The function uses this value to check `selectedRoles` and embeds it in the custom token claims (`knackUserRole: knackUserRole`). A sophisticated attacker running a Knack session with developer tools can override the role to match any value in `selectedRoles`, gaining a token with a higher-privilege role claim.
 
 **Fix:** Cross-verify the role server-side via the Knack REST API (`GET /v1/objects/{object}/records/{userId}`) using a server-side API key stored in Secret Manager, rather than trusting the widget-reported role.
+
+> 🔴 **Open — Backlog:** Server-side Knack API call required; complexity estimated 4 hrs; scheduled for Sprint 3.
 
 ---
 
@@ -131,6 +142,8 @@ var apiKey = 'AIzaSyC6J5VNpybrQUnD-pbnaQkXjcAeVAUZZKo';
 While Firebase web API keys are by design public and restricted to registered origins, this key is hardcoded in a file served with `Access-Control-Allow-Origin: *` with no referrer or domain restriction visible in the audit. If the key is not restricted in the Google Cloud Console (API key restrictions → HTTP referrers), an attacker can make Identity Toolkit calls from any origin using that key, e.g., enumerate valid UIDs via `signInWithCustomToken` probing.
 
 **Fix:** In Google Cloud Console → Credentials, add HTTP referrer restrictions to this API key (allow only `*.snap4knack2.web.app` and `*.knack.com` patterns). Also restrict the key to the Identity Toolkit API only.
+
+> 🔴 **Open — Manual task:** Requires GCP Console API key restriction; no code change needed. Assigned to DevOps.
 
 ---
 
@@ -154,6 +167,8 @@ npm audit fix
 cd functions && npm audit fix
 ```
 
+> ✅ **Fixed in commit `50344d6` (March 6, 2026):** `npm audit fix --force` + `@typescript-eslint` upgrades applied. Result: **0 frontend CVEs**, **8 low functions CVEs** (all in `@tootallnate/once` — transitive dep of firebase-admin 12; only fixable by downgrading to firebase-admin 10, which is a worse regression; accepted as low risk).
+
 ---
 
 ## MEDIUM
@@ -175,6 +190,8 @@ No security headers are set for the SPA (`/`). The hosting config only sets `Cac
 
 **Fix:** Add a `"source": "**"` headers block to `firebase.json` with the above values.
 
+> ✅ **Fixed in commit `50344d6` (March 6, 2026):** Global `"source": "**"` headers block added to `firebase.json` with all six headers: `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`, `Permissions-Policy`, `Strict-Transport-Security: max-age=31536000; includeSubDomains`, and a full `Content-Security-Policy`.
+
 ---
 
 ### M-02 — Storage CORS allows all origins with all HTTP methods
@@ -188,6 +205,8 @@ No security headers are set for the SPA (`/`). The hosting config only sets `Cac
 This allows any web page to read public Storage objects across origins and to issue write/delete requests (with a valid bearer token). While Storage rules enforce auth, the wildcard CORS origin means the storage bucket can be embedded or hotlinked from arbitrary sites.
 
 **Fix:** Restrict `origin` to `["https://snap4knack2.web.app", "https://app.knack.com", "*.knack.com"]`. Remove `DELETE` and `PUT` from `method` if unused by the app.
+
+> 🔴 **Open — Backlog:** `cors.json` not yet updated; the wildcard origin is intentional for the embeddable widget but PUT/DELETE restriction is valid. Scheduled for Sprint 3.
 
 ---
 
@@ -214,6 +233,8 @@ const annotationData = body.annotationData
 ```
 And add `maxInstances` + request body size limit to the function.
 
+> ✅ **Fixed in commit `50344d6` (March 6, 2026):** Server-side payload caps added to `submitSnap` in `functions/src/index.ts`: `consoleErrors` truncated to 100 entries, `annotationData` rejected if JSON serialization exceeds 50 KB, `formData` capped at 50 keys, `context` capped at 20 keys, `priority` validated against an explicit allowlist `['low','medium','high','critical']`.
+
 ---
 
 ### M-04 — Console capture logs may contain PII or credentials
@@ -226,6 +247,8 @@ The widget intercepts all five console levels (`log`, `info`, `warn`, `error`, `
 - Add a client-side redaction pass: strip strings matching patterns for email addresses, JWT patterns (`ey`…), API keys (40-char hex strings).
 - Display a clear data-capture disclosure in the widget UI.
 - Ensure `snap_submissions` Firestore documents are scoped and not accessible to clients beyond their tenantId.
+
+> 🔴 **Open — Backlog:** Widget-side PII redaction not yet implemented; Firestore scoping is enforced by rules. Scheduled for Sprint 3.
 
 ---
 
@@ -248,6 +271,8 @@ allow create: if isAdmin();
 allow read, update, delete: if isAdmin() || resource.data.tenantId == request.auth.uid;
 ```
 
+> ✅ **Fixed in commit `50344d6` (March 6, 2026):** `firestore.rules` `client_invitations` split into `allow create: if isAdmin()` and `allow read, update, delete: if isAdmin() || resource.data.tenantId == request.auth.uid`.
+
 ---
 
 ### M-06 — `contactForm` has no spam / abuse protection
@@ -257,6 +282,8 @@ allow read, update, delete: if isAdmin() || resource.data.tenantId == request.au
 The endpoint is publicly accessible, requires no authentication, and sends email to two recipients for every request. There is no CAPTCHA, IP rate limit, or request deduplication. Abuse can exhaust the SendGrid daily limit and create noise for recipients.
 
 **Fix:** Add reCAPTCHA v3 verification server-side, or require a `X-Recaptcha-Token` header; alternatively gate behind a shared HMAC token set at build time.
+
+> 🔴 **Open — Backlog:** Depends on H-01 rate limiting work; scheduled for Sprint 2.
 
 ---
 
@@ -272,6 +299,8 @@ if (url.indexOf('https://') !== 0) {
   return Promise.reject(new Error('Only HTTPS requests allowed'));
 }
 ```
+
+> ✅ **Fixed in commit `50344d6` (March 6, 2026):** HTTPS assertion added at the top of `req()` in `public/widget/snap4knack.js`; any non-`https://` URL now immediately rejects with an error.
 
 ---
 
@@ -302,7 +331,7 @@ allow create: if isAuthenticated();
 Same pattern as the parent collection: there's no constraint that the commenter must have access to the parent submission. A widget token from tenant A can add a comment to a submission belonging to tenant B.
 
 **Fix:** Add `get()` check: `allow create: if isAuthenticated() && (... tenantId check via parent doc ...)`.
-
+> ✅ **Fixed in commit `50344d6` (March 6, 2026):** `firestore.rules` comments `allow create` rule now requires the commenter to have submission read access (tenant owner or client with plugin access via `clientHasPluginAccess`).
 ---
 
 ### L-04 — Realtime Database rules are fully closed but database may not be used
@@ -322,6 +351,8 @@ const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY || "";
 If Secret Manager is unreachable, the function silently falls back to an environment variable. If that variable is set (e.g. in a `.env` file accidentally committed), a secret leaks. If it's empty, email silently fails. Neither is ideal.
 
 **Fix:** Remove the env-var fallback; throw on Secret Manager failure so the error is visible in function logs rather than silently degrading.
+
+> 🔴 **Open — Backlog:** `process.env` fallback still present; removing it risks a silent failure during Secret Manager outage; requires error-handling improvement. Scheduled for Sprint 3.
 
 ---
 
@@ -347,15 +378,21 @@ The architecture doc may expose internal design decisions if the repository is e
 
 ## Recommended Fix Priority
 
-| Priority | Issue | Effort |
-|----------|-------|--------|
-| 1 (this sprint) | C-01 HTML injection in email | 30 min |
-| 1 (this sprint) | H-03 Firestore create rule for submissions | 30 min |
-| 1 (this sprint) | H-06 npm audit fix | 15 min |
-| 2 (next sprint) | M-01 Security headers in firebase.json | 1 hr |
-| 2 (next sprint) | M-03 Payload size validation in submitSnap | 1 hr |
-| 2 (next sprint) | H-01 Rate limiting (App Check + contactForm CAPTCHA) | 3 hrs |
-| 3 (backlog) | H-02 App Check enforcement | 2 hrs |
-| 3 (backlog) | H-04 Server-side role verification | 4 hrs |
-| 3 (backlog) | M-02 Storage CORS tightening | 30 min |
-| 3 (backlog) | H-05 API key restriction in GCP console | 30 min |
+| Priority | Issue | Effort | Status |
+|----------|-------|--------|--------|
+| 1 (this sprint) | C-01 HTML injection in email | 30 min | ✅ Fixed `50344d6` |
+| 1 (this sprint) | H-03 Firestore create rule for submissions | 30 min | ✅ Fixed `50344d6` |
+| 1 (this sprint) | H-06 npm audit fix | 15 min | ✅ Fixed `50344d6` |
+| 2 (next sprint) | M-01 Security headers in firebase.json | 1 hr | ✅ Fixed `50344d6` |
+| 2 (next sprint) | M-03 Payload size validation in submitSnap | 1 hr | ✅ Fixed `50344d6` |
+| 2 (next sprint) | M-05 `client_invitations` create rule | 30 min | ✅ Fixed `50344d6` |
+| 2 (next sprint) | M-07 Widget HTTPS assertion | 30 min | ✅ Fixed `50344d6` |
+| 2 (next sprint) | L-03 Comments create rule | 30 min | ✅ Fixed `50344d6` |
+| 2 (next sprint) | H-01 Rate limiting (App Check + contactForm CAPTCHA) | 3 hrs | 🔴 Open — Sprint 2 |
+| 3 (backlog) | H-02 App Check enforcement | 2 hrs | 🔴 Open — Sprint 3 |
+| 3 (backlog) | H-04 Server-side role verification | 4 hrs | 🔴 Open — Sprint 3 |
+| 3 (backlog) | M-02 Storage CORS tightening | 30 min | 🔴 Open — Sprint 3 |
+| 3 (backlog) | H-05 API key restriction in GCP console | 30 min | 🔴 Open — Manual |
+| 3 (backlog) | M-04 Console PII redaction | 2 hrs | 🔴 Open — Sprint 3 |
+| 3 (backlog) | M-06 contactForm CAPTCHA | 2 hrs | 🔴 Open — Sprint 2 |
+| 3 (backlog) | L-05 SENDGRID_API_KEY env fallback | 30 min | 🔴 Open — Sprint 3 |

@@ -1,6 +1,7 @@
 # Penetration Test Regiment — Snap4Knack2
 
 **Date:** March 6, 2026  
+**Last Updated:** March 6, 2026 — Fixes applied in commit `50344d6`  
 **Scope:** Black-box and grey-box testing of all externally reachable surfaces  
 **Prerequisites:** Written authorization from system owner, staging environment, test Knack account  
 **Methodology:** OWASP Web Security Testing Guide (WSTG) v4.2 + Firebase-specific attack patterns  
@@ -164,9 +165,9 @@ curl -X POST \
   }'
 ```
 
-**Expected (current rules):** `200 OK` — the Firestore rule `allow create: if isAuthenticated()` permits this. **This is the H-03 vulnerability.** A successful write here is a **FAIL**.
+**Expected (current rules after `50344d6`):** `403 PERMISSION_DENIED` — the Firestore `snap_submissions` create rule now requires `tenantId` to match the authenticated user's UID or widget token claims. A cross-tenant write returns `PERMISSION_DENIED`. **Test should now PASS.**
 
-**Expected (after fix):** `403 PERMISSION_DENIED`.
+> ✅ **Fixed in commit `50344d6` (March 6, 2026):** H-03 Firestore rule enforces `request.resource.data.tenantId == request.auth.uid` or matching widget token claims (`snap_tenantId` + `snap_pluginId`).
 
 ---
 
@@ -246,9 +247,9 @@ curl -X POST .../contactForm \
   }'
 ```
 
-**Expected (current code):** All three payloads are delivered verbatim into the email HTML. **FAIL** — this is the C-01 critical finding.
+**Expected:** All special chars are HTML-encoded; the script tags and event handlers are inert in the rendered email. **Test should now PASS.**
 
-**Expected (after fix):** All special chars are HTML-encoded; the script tags and event handlers are inert in the rendered email.
+> ✅ **Fixed in commit `50344d6` (March 6, 2026):** C-01 resolved — `he()` helper added and all four `contactForm` user fields are HTML-encoded before SendGrid template interpolation.
 
 ---
 
@@ -274,9 +275,9 @@ curl -X POST .../submitSnap \
   -d @big_payload.json
 ```
 
-**Expected (current):** Firestore write succeeds with a document exceeding 1 MB → **Firestore will reject with a "Document too large" error (400)**. The function unhandled exception returns 500. **Partial fail** — the function should validate and truncate before attempting the write.
+**Expected:** The function truncates `consoleErrors` to 100 entries, rejects `annotationData` over 50 KB, caps `formData` at 50 keys and `context` at 20 keys, validates `priority` against an allowlist, and returns 200 with a validly stored document. **Test should now PASS.**
 
-**Expected (after fix):** The function truncates `consoleErrors` to 100 and `annotationData` to a reasonable size, returning 200 with a validly stored document.
+> ✅ **Fixed in commit `50344d6` (March 6, 2026):** M-03 resolved — server-side payload caps added to `submitSnap` in `functions/src/index.ts`.
 
 ---
 
@@ -329,15 +330,9 @@ curl -X POST .../fetchKnackRoles \
   -d '{"data":{"appId":"any","secretName":"projects/snap4knack2/secrets/knack-TENANTB-CONN/versions/latest"}}'
 ```
 
-**Expected (current):** The Secret Manager call will succeed if the Cloud Function's service account has `secretmanager.secretAccessor` on all secrets. The function does **not** validate that `secretName` belongs to `request.auth.uid`.  **FAIL — privilege escalation between tenants.**
+**Expected:** `permission-denied: Secret not authorized.` — the function now validates that `secretName` starts with the calling tenant's UID prefix. Any attempt to access another tenant's secret is rejected. **Test should now PASS.**
 
-**Fix:** Validate that `secretName` starts with `projects/snap4knack2/secrets/knack-${request.auth.uid}-`:
-```typescript
-const expectedPrefix = `projects/${PROJECT_ID}/secrets/knack-${request.auth.uid}-`;
-if (!secretName.startsWith(expectedPrefix)) {
-  throw new functions.https.HttpsError('permission-denied', 'Secret not owned by caller.');
-}
-```
+> ✅ **Fixed in commit `50344d6` (March 6, 2026):** `fetchKnackRoles` now validates that `secretName` starts with `projects/snap4knack2/secrets/knack-${uid}-`; cross-tenant secret reads are rejected with `permission-denied`.
 
 ---
 
@@ -364,12 +359,9 @@ curl -X POST .../storeKnackApiKey \
   }'
 ```
 
-**Expected:** Secret Manager secret IDs cannot contain `/` — the `createSecret` call will fail with `INVALID_ARGUMENT`. **Pass**, but should be explicitly validated with an alphanumeric allowlist:
-```typescript
-if (!/^[a-zA-Z0-9_-]+$/.test(connectionId)) {
-  throw new HttpsError('invalid-argument', 'Invalid connectionId format.');
-}
-```
+**Expected:** `invalid-argument: Invalid connectionId format.` — `storeKnackApiKey` now validates `connectionId` against `/^[a-zA-Z0-9_-]+$/` before constructing the secret ID. **Test should now PASS.**
+
+> ✅ **Fixed in commit `50344d6` (March 6, 2026):** Alphanumeric allowlist validation added to `storeKnackApiKey` for the `connectionId` parameter.
 
 ---
 
@@ -386,14 +378,9 @@ if (!/^[a-zA-Z0-9_-]+$/.test(connectionId)) {
 
 **Expected:** Firebase ID tokens are valid for up to 1 hour after issuance. `revokeClientAccess` removes `clientAccess` from the user's Firestore document and calls no Firebase Auth token revocation. The token remains valid for its remaining lifetime.
 
-**Result:** **Partial fail** — up to 59 minutes of residual access after revocation.
+**Result after `50344d6`:** `revokeClientAccess` now calls `auth.revokeRefreshTokens(invitedUid)` alongside the Firestore update. New refresh token requests are blocked immediately; existing ID tokens remain valid for their remaining lifetime (up to 1 hr) unless rules also check `auth_time`.
 
-**Fix:** Call `auth.revokeRefreshTokens(uid)` in `revokeClientAccess`, then update Firestore rules to include `request.auth.token.auth_time` check:
-```js
-function isRecentToken() {
-  return request.auth.token.auth_time > (request.time.toMillis() / 1000 - 3600);
-}
-```
+> ✅ **Partially fixed in commit `50344d6` (March 6, 2026):** `revokeRefreshTokens()` added to `revokeClientAccess` — prevents new token issuance immediately after revocation. The Firestore `auth_time` check is still a backlog item for full zero-residual-access revocation.
 
 ---
 
@@ -465,7 +452,9 @@ curl -sI "https://snap4knack2.web.app" | grep -iE \
   "content-security-policy|x-frame-options|x-content-type-options|strict-transport|referrer-policy|permissions-policy"
 ```
 
-**Expected:** All six headers present. **Currently fails** (see Security Audit M-01) — no security headers are set on the SPA route.
+**Expected:** All six headers present. **Test should now PASS.**
+
+> ✅ **Fixed in commit `50344d6` (March 6, 2026):** M-01 resolved — global `"source": "**"` headers block added to `firebase.json` with all six security headers.
 
 ---
 
@@ -508,14 +497,9 @@ curl -X PATCH \
   -d '{"fields":{"count":{"integerValue":"0"}}}'
 ```
 
-**Expected (current rules):** The `snap_counters` collection has **no explicit Firestore rule** — it falls through to the default deny. **Should return 403.** Verify this.
+**Expected:** `403 PERMISSION_DENIED` — `snap_counters` now has an explicit `allow read, write: if false` rule. **Test should now PASS.**
 
-**If it returns 200:** Add an explicit rule:
-```js
-match /snap_counters/{tenantId} {
-  allow read, write: if false;  // server-side only, written by Cloud Function
-}
-```
+> ✅ **Fixed in commit `50344d6` (March 6, 2026):** Explicit `match /snap_counters/{tenantId} { allow read, write: if false; }` rule added to `firestore.rules`.
 
 ---
 
@@ -581,19 +565,19 @@ wait
 | 3.1 | AuthN | curl | Staging | No timing oracle | To run |
 | 3.2 | AuthZ | curl | Staging | **FAIL** (role spoofing works) | Known vuln H-04 |
 | 3.3 | AuthZ | curl | Staging | PASS (token claims used) | To verify |
-| 3.4 | AuthZ | curl | Staging | **FAIL** (free Firestore write) | Known vuln H-03 |
+| 3.4 | AuthZ | curl | Staging | PASS (H-03 rule enforces tenantId) | ✅ Fixed `50344d6` |
 | 3.5 | AuthN | curl | Staging | PASS (128-bit token) | To verify |
 | 3.6 | AuthZ | curl | Staging | PASS (tenantId check) | To verify |
-| 4.1 | Injection | curl | Staging | **FAIL** (HTML injection) | Known vuln C-01 |
-| 4.2 | Validation | curl | Staging | FAIL (no size check) | Known vuln M-03 |
-| 4.4 | SSRF | curl | Staging | **FAIL** (secretName IDOR) | New finding |
-| 4.5 | Injection | curl | Staging | PASS (SM rejects /) | To verify |
-| 5.1 | Session | Manual | Staging | FAIL (token survives revoke) | Known gap |
+| 4.1 | Injection | curl | Staging | PASS (HTML-encoded via `he()`) | ✅ Fixed `50344d6` |
+| 4.2 | Validation | curl | Staging | PASS (server-side caps applied) | ✅ Fixed `50344d6` |
+| 4.4 | SSRF/IDOR | curl | Staging | PASS (secretName prefix check) | ✅ Fixed `50344d6` |
+| 4.5 | Injection | curl | Staging | PASS (alphanumeric allowlist) | ✅ Fixed `50344d6` |
+| 5.1 | Session | Manual | Staging | Partial — revokeRefreshTokens added, auth_time rule pending | ⚠️ Partial fix `50344d6` |
 | 5.2 | Session | Burp / browser | Staging | PASS (refresh implemented) | To verify |
 | 6.1 | Disclosure | curl | Staging | PASS (no stack traces) | To verify |
 | 6.2 | AuthZ | curl | Staging | PASS (Firestore rule) | To verify |
-| 6.3 | Headers | curl | Production | **FAIL** (no security headers) | Known vuln M-01 |
-| 7.2 | Logic | curl | Staging | PASS (default deny) | To verify |
+| 6.3 | Headers | curl | Production | PASS (6 security headers deployed) | ✅ Fixed `50344d6` |
+| 7.2 | Logic | curl | Staging | PASS (explicit `if false` rule) | ✅ Fixed `50344d6` |
 | 7.3 | Race | bash parallel | Staging | PASS (transaction) | To verify |
 | 8.1 | DoS | bash | Staging | **FAIL** (no rate limit) | Known vuln H-01 |
 | 8.2 | DoS | bash | Staging | **FAIL** (Firestore amplification) | Known vuln H-01/H-02 |
@@ -627,18 +611,29 @@ if (!secretName.startsWith(expectedPrefix)) {
 }
 ```
 
+> ✅ **Fixed in commit `50344d6` (March 6, 2026):** Prefix ownership check implemented in `fetchKnackRoles`. Cross-tenant secret access now returns `permission-denied`.
+
 ---
 
 ## 11. Remediation Tracking
 
 | Finding | Source | Severity | Owner | Target |
 |---------|--------|----------|-------|--------|
-| C-01 HTML injection in email | Security Audit | Critical | Backend | Sprint 1 |
-| H-03 Firestore create rule | Security Audit | High | Backend | Sprint 1 |
-| New: `fetchKnackRoles` secret IDOR | Pen Test | High | Backend | Sprint 1 |
-| M-01 Missing HTTP headers | Security Audit | Medium | DevOps | Sprint 2 |
-| H-01 Rate limiting | Security Audit | High | Backend | Sprint 2 |
-| H-02 App Check | Security Audit | High | Backend | Sprint 3 |
-| H-04 Role verification | Security Audit | High | Backend | Sprint 3 |
-| 5.1 Token revocation gap | Pen Test | Medium | Backend | Sprint 3 |
-| 7.2 `snap_counters` rule | Pen Test | Medium | Backend | Sprint 1 |
+| C-01 HTML injection in email | Security Audit | Critical | Backend | Sprint 1 | ✅ Fixed `50344d6` |
+| H-03 Firestore create rule | Security Audit | High | Backend | Sprint 1 | ✅ Fixed `50344d6` |
+| New: `fetchKnackRoles` secret IDOR | Pen Test | High | Backend | Sprint 1 | ✅ Fixed `50344d6` |
+| 4.5 connectionId injection | Pen Test | Medium | Backend | Sprint 1 | ✅ Fixed `50344d6` |
+| M-01 Missing HTTP headers | Security Audit | Medium | DevOps | Sprint 2 | ✅ Fixed `50344d6` |
+| M-03 Payload size caps | Security Audit | Medium | Backend | Sprint 2 | ✅ Fixed `50344d6` |
+| M-05 client_invitations create rule | Security Audit | Medium | Backend | Sprint 1 | ✅ Fixed `50344d6` |
+| M-07 Widget HTTPS assertion | Security Audit | Medium | Backend | Sprint 2 | ✅ Fixed `50344d6` |
+| L-03 Comments create rule | Security Audit | Low | Backend | Sprint 1 | ✅ Fixed `50344d6` |
+| 7.2 `snap_counters` rule | Pen Test | Medium | Backend | Sprint 1 | ✅ Fixed `50344d6` |
+| 5.1 Token revocation gap | Pen Test | Medium | Backend | Sprint 3 | ⚠️ Partial `50344d6` |
+| H-01 Rate limiting | Security Audit | High | Backend | Sprint 2 | 🔴 Open |
+| H-02 App Check | Security Audit | High | Backend | Sprint 3 | 🔴 Open |
+| H-04 Role verification | Security Audit | High | Backend | Sprint 3 | 🔴 Open |
+| H-05 API key GCP restriction | Security Audit | High | DevOps | Manual | 🔴 Open |
+| M-02 Storage CORS tightening | Security Audit | Medium | DevOps | Sprint 3 | 🔴 Open |
+| M-04 Console PII redaction | Security Audit | Medium | Frontend | Sprint 3 | 🔴 Open |
+| M-06 contactForm CAPTCHA | Security Audit | Medium | Backend | Sprint 2 | 🔴 Open |
