@@ -65,8 +65,8 @@
         var msg = args.map(function (a) {
           try { return typeof a === 'object' ? JSON.stringify(a) : String(a); } catch (e) { return String(a); }
         }).join(' ');
-        // Ignore the widget's own log lines
-        if (msg.indexOf('[Snap4Knack]') === -1) {
+        // Ignore the widget's own internal debug lines (loader + auth, not app logs)
+          if (msg.indexOf('[Snap4Knack] loader') === -1 && msg.indexOf('[Snap4Knack] snap4knack.js') === -1 && msg.indexOf('[Snap4Knack] bundle') === -1 && msg.indexOf('[Snap4Knack] already loaded') === -1) {
           state.consoleErrors.push({ level: level, message: msg, timestamp: Date.now() });
           if (state.consoleErrors.length > 100) state.consoleErrors.shift();
         }
@@ -371,6 +371,7 @@
     else if (mode === MODES.RECORDING) startScreenRecording();
     else if (mode === MODES.CONSOLE) {
       state.captureType = MODES.CONSOLE;
+      state.attachConsole = true;
       state.step = 'form';
       renderDrawer();
     }
@@ -1081,7 +1082,7 @@
         screenshotUrl: screenshotUrl,
         recordingUrl: recordingUrl,
         annotationData: shapes.length ? { shapes: shapes } : null,
-        consoleErrors: state.attachConsole ? state.consoleErrors.slice(-20) : [],
+        consoleErrors: (state.attachConsole || state.captureType === MODES.CONSOLE) ? state.consoleErrors.slice() : [],
         formData: state.formData || {},
         context: context,
         priority: (state.formData && state.formData.priority) || 'medium',
