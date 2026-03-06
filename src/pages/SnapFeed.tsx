@@ -11,6 +11,7 @@ import {
   startAfter,
   updateDoc,
   doc,
+  writeBatch,
   QueryDocumentSnapshot,
   DocumentData,
 } from 'firebase/firestore';
@@ -177,6 +178,14 @@ export default function SnapFeed() {
     await updateDoc(doc(db, 'snap_submissions', id), { status: newStatus });
   };
 
+  const handleReorder = async (_columnStatus: string, orderedIds: string[]) => {
+    const batch = writeBatch(db);
+    orderedIds.forEach((id, index) => {
+      batch.update(doc(db, 'snap_submissions', id), { sortOrder: index * 1000 });
+    });
+    await batch.commit();
+  };
+
   return (
     <div>
       <SEO title="Snap Feed" />
@@ -279,6 +288,7 @@ export default function SnapFeed() {
           linkPrefix="/snap-feed"
           pluginMap={pluginMap}
           onStatusChange={handleStatusChange}
+          onReorder={handleReorder}
         />
       ) : (
         <>

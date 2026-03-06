@@ -344,7 +344,6 @@
       { id: MODES.AREA,      icon: SVG_AREA,    label: 'Select Area',    desc: 'Draw a region to capture' },
       { id: MODES.PIN,       icon: SVG_PIN,     label: 'Pin Element',    desc: 'Click on a specific element' },
       { id: MODES.RECORDING, icon: SVG_RECORD,  label: 'Record Screen',  desc: 'Record up to 30 seconds' },
-      { id: MODES.CONSOLE,   icon: SVG_CONSOLE, label: 'Console Output', desc: 'Attach console logs, warnings & errors (' + state.consoleErrors.length + ')' },
     ];
 
     modes.forEach(function (m) {

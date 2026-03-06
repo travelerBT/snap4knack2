@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
+import { collection, query, where, orderBy, getDocs, writeBatch, doc } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import SEO from '../../components/SEO';
@@ -34,6 +34,14 @@ export default function ClientPortal() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [view, setView] = useState<'list' | 'kanban'>('kanban');
+
+  const handleReorder = async (_columnStatus: string, orderedIds: string[]) => {
+    const batch = writeBatch(db);
+    orderedIds.forEach((id, index) => {
+      batch.update(doc(db, 'snap_submissions', id), { sortOrder: index * 1000 });
+    });
+    await batch.commit();
+  };
 
   useEffect(() => {
     if (!clientAccess || clientAccess.length === 0) {
@@ -146,6 +154,7 @@ export default function ClientPortal() {
         <KanbanBoard
           submissions={filtered}
           linkPrefix="/client-portal/snap"
+          onReorder={handleReorder}
         />
       ) : (
         <div className="bg-white shadow rounded-lg overflow-hidden">

@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import {
   DndContext,
   DragEndEvent,
+  DragOverEvent,
   DragStartEvent,
   DragOverlay,
   PointerSensor,
@@ -10,8 +11,14 @@ import {
   useSensor,
   useSensors,
   closestCenter,
+  useDroppable,
 } from '@dnd-kit/core';
-import { useDraggable, useDroppable } from '@dnd-kit/core';
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  arrayMove,
+} from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { PhotoIcon, VideoCameraIcon, CursorArrowRaysIcon, RectangleStackIcon, CommandLineIcon } from '@heroicons/react/24/outline';
 import type { SnapSubmission, SnapPlugin } from '../types';
@@ -32,52 +39,69 @@ const COLUMN_STYLES: Record<string, { bg: string; headerBg: string; border: stri
   archived:    { bg: 'bg-gray-50',   headerBg: 'bg-gray-100',   border: 'border-gray-200',   count: 'bg-gray-200 text-gray-700' },
 };
 
+const STATUS_VALUES = new Set<string>(STATUS_OPTIONS.map((s) => s.value));
+
 interface KanbanBoardProps {
   submissions: SnapSubmission[];
-  linkPrefix: string; // '/snap-feed' for staff, '/client-portal/snap' for client
+  linkPrefix: string;
   pluginMap?: Record<string, SnapPlugin>;
   onStatusChange?: (id: string, newStatus: string) => Promise<void>;
+  onReorder?: (columnStatus: string, orderedIds: string[]) => Promise<void>;
 }
 
-// ── Draggable card ────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-function DraggableCard({
+function sortKey(sub: SnapSubmission) {
+  if (sub.sortOrder != null) return sub.sortOrder;
+  return sub.createdAt?.toMillis?.() ?? 0;
+}
+
+function buildGroups(submissions: SnapSubmission[]): Record<string, string[]> {
+  const sorted = [...submissions].sort((a, b) => sortKey(a) - sortKey(b));
+  const groups: Record<string, string[]> = {};
+  STATUS_OPTIONS.forEach((s) => { groups[s.value] = []; });
+  sorted.forEach((sub) => {
+    if (groups[sub.status]) groups[sub.status].push(sub.id);
+    else groups['new']?.push(sub.id);
+  });
+  return groups;
+}
+
+// ── Sortable card ─────────────────────────────────────────────────────────────
+
+function SortableCard({
   sub,
   linkPrefix,
   pluginMap,
+  canDrag,
   isDragging,
 }: {
   sub: SnapSubmission;
   linkPrefix: string;
   pluginMap?: Record<string, SnapPlugin>;
-  isDragging?: boolean;
+  canDrag: boolean;
+  isDragging: boolean;
 }) {
-  const { attributes, listeners, setNodeRef, transform } = useDraggable({ id: sub.id });
-  const style = transform ? { transform: CSS.Translate.toString(transform) } : undefined;
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
+    id: sub.id,
+    disabled: !canDrag,
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
 
   return (
     <div
       ref={setNodeRef}
       style={style}
-      {...listeners}
-      {...attributes}
+      {...(canDrag ? { ...listeners, ...attributes } : {})}
       className={`touch-none ${isDragging ? 'opacity-40' : ''}`}
     >
       <SnapCard sub={sub} linkPrefix={linkPrefix} pluginMap={pluginMap} />
     </div>
   );
-}
-
-function StaticCard({
-  sub,
-  linkPrefix,
-  pluginMap,
-}: {
-  sub: SnapSubmission;
-  linkPrefix: string;
-  pluginMap?: Record<string, SnapPlugin>;
-}) {
-  return <SnapCard sub={sub} linkPrefix={linkPrefix} pluginMap={pluginMap} />;
 }
 
 function SnapCard({
@@ -100,7 +124,6 @@ function SnapCard({
       className="block bg-white rounded-lg border border-gray-200 shadow-sm hover:shadow-md hover:border-gray-300 transition-all p-3 cursor-pointer select-none"
       draggable={false}
     >
-      {/* Thumbnail */}
       {sub.screenshotUrl && (
         <div className="h-24 w-full rounded overflow-hidden bg-gray-100 mb-2">
           <img src={sub.screenshotUrl} alt="snap" className="h-full w-full object-cover" />
@@ -112,7 +135,6 @@ function SnapCard({
         </div>
       )}
 
-      {/* Category + type */}
       <div className="flex items-center justify-between gap-1 mb-1">
         <span className="text-xs font-semibold text-gray-800 truncate">{sub.formData?.category ?? 'Snap'}</span>
         <span className="flex items-center gap-0.5 text-xs text-gray-400 flex-shrink-0">
@@ -121,15 +143,11 @@ function SnapCard({
         </span>
       </div>
 
-      {/* Description */}
       {sub.formData?.description && (
         <p className="text-xs text-gray-500 line-clamp-2 mb-1.5">{sub.formData.description}</p>
       )}
-
-      {/* Page URL */}
       <p className="text-[10px] text-gray-400 truncate mb-2">{sub.context?.pageUrl ?? ''}</p>
 
-      {/* Footer: plugin/user, priority, date */}
       <div className="flex items-center justify-between gap-1 flex-wrap">
         <div className="flex flex-col min-w-0">
           {sub.context?.knackUserName && (
@@ -157,7 +175,8 @@ function SnapCard({
 function KanbanColumn({
   statusValue,
   statusLabel,
-  cards,
+  orderedIds,
+  subMap,
   linkPrefix,
   pluginMap,
   draggingId,
@@ -165,7 +184,8 @@ function KanbanColumn({
 }: {
   statusValue: string;
   statusLabel: string;
-  cards: SnapSubmission[];
+  orderedIds: string[];
+  subMap: Record<string, SnapSubmission>;
   linkPrefix: string;
   pluginMap?: Record<string, SnapPlugin>;
   draggingId: string | null;
@@ -176,37 +196,40 @@ function KanbanColumn({
 
   return (
     <div className="flex flex-col min-w-[260px] w-full flex-1">
-      {/* Column header */}
       <div className={`flex items-center justify-between px-3 py-2.5 rounded-t-xl ${styles.headerBg} border ${styles.border} border-b-0`}>
         <span className="text-sm font-semibold text-gray-700">{statusLabel}</span>
-        <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${styles.count}`}>{cards.length}</span>
+        <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${styles.count}`}>{orderedIds.length}</span>
       </div>
 
-      {/* Drop zone */}
       <div
         ref={setNodeRef}
-        className={`flex-1 min-h-[120px] rounded-b-xl border ${styles.border} ${styles.bg} p-2 space-y-2 transition-colors ${
+        className={`flex-1 min-h-[120px] rounded-b-xl border ${styles.border} ${styles.bg} p-2 transition-colors ${
           isOver ? 'ring-2 ring-inset ring-blue-400 bg-blue-50' : ''
         }`}
       >
-        {cards.map((sub) =>
-          canDrag ? (
-            <DraggableCard
-              key={sub.id}
-              sub={sub}
-              linkPrefix={linkPrefix}
-              pluginMap={pluginMap}
-              isDragging={draggingId === sub.id}
-            />
-          ) : (
-            <StaticCard key={sub.id} sub={sub} linkPrefix={linkPrefix} pluginMap={pluginMap} />
-          )
-        )}
-        {cards.length === 0 && (
-          <div className={`h-16 rounded-lg border-2 border-dashed ${styles.border} flex items-center justify-center`}>
-            <span className="text-xs text-gray-400">No snaps</span>
+        <SortableContext items={orderedIds} strategy={verticalListSortingStrategy}>
+          <div className="space-y-2">
+            {orderedIds.map((id) => {
+              const sub = subMap[id];
+              if (!sub) return null;
+              return (
+                <SortableCard
+                  key={id}
+                  sub={sub}
+                  linkPrefix={linkPrefix}
+                  pluginMap={pluginMap}
+                  canDrag={canDrag}
+                  isDragging={draggingId === id}
+                />
+              );
+            })}
+            {orderedIds.length === 0 && (
+              <div className={`h-16 rounded-lg border-2 border-dashed ${styles.border} flex items-center justify-center`}>
+                <span className="text-xs text-gray-400">No snaps</span>
+              </div>
+            )}
           </div>
-        )}
+        </SortableContext>
       </div>
     </div>
   );
@@ -214,41 +237,120 @@ function KanbanColumn({
 
 // ── Main board ────────────────────────────────────────────────────────────────
 
-export default function KanbanBoard({ submissions, linkPrefix, pluginMap, onStatusChange }: KanbanBoardProps) {
+export default function KanbanBoard({ submissions, linkPrefix, pluginMap, onStatusChange, onReorder }: KanbanBoardProps) {
   const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragStartCol, setDragStartCol] = useState<string | null>(null);
+  const [localGroups, setLocalGroups] = useState<Record<string, string[]>>(() => buildGroups(submissions));
+
+  // Sync when submissions change (new items, removals, status changes from Firestore)
+  useEffect(() => {
+    setLocalGroups(buildGroups(submissions));
+  }, [submissions]);
+
+  const subMap = useCallback(() => {
+    const m: Record<string, SnapSubmission> = {};
+    submissions.forEach((s) => { m[s.id] = s; });
+    return m;
+  }, [submissions])();
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } })
   );
 
-  const grouped = Object.fromEntries(
-    STATUS_OPTIONS.map((s) => [s.value, submissions.filter((sub) => sub.status === s.value)])
-  );
+  const canDrag = !!(onStatusChange || onReorder);
 
-  const draggingSnap = draggingId ? submissions.find((s) => s.id === draggingId) ?? null : null;
+  function findColOfId(id: string, groups: Record<string, string[]>): string | null {
+    for (const [col, ids] of Object.entries(groups)) {
+      if (ids.includes(id)) return col;
+    }
+    return null;
+  }
 
   function handleDragStart(event: DragStartEvent) {
-    setDraggingId(String(event.active.id));
+    const id = String(event.active.id);
+    setDraggingId(id);
+    setDragStartCol(findColOfId(id, localGroups));
+  }
+
+  function handleDragOver(event: DragOverEvent) {
+    const { active, over } = event;
+    if (!over) return;
+
+    const activeId = String(active.id);
+    const overId = String(over.id);
+
+    setLocalGroups((prev) => {
+      const activeCol = findColOfId(activeId, prev);
+      if (!activeCol) return prev;
+
+      // Determine target column: over a column directly, or over a card
+      const targetCol = STATUS_VALUES.has(overId) ? overId : findColOfId(overId, prev);
+      if (!targetCol || targetCol === activeCol) return prev;
+
+      // Move card to target column (at the end for now; handleDragEnd will fine-tune)
+      const next = { ...prev };
+      next[activeCol] = next[activeCol].filter((id) => id !== activeId);
+      next[targetCol] = [...(next[targetCol] ?? []), activeId];
+      return next;
+    });
   }
 
   async function handleDragEnd(event: DragEndEvent) {
-    setDraggingId(null);
     const { active, over } = event;
-    if (!over || !onStatusChange) return;
-    const newStatus = String(over.id);
-    const snap = submissions.find((s) => s.id === String(active.id));
-    if (!snap || snap.status === newStatus) return;
-    await onStatusChange(String(active.id), newStatus);
+    setDraggingId(null);
+
+    if (!over) return;
+
+    const activeId = String(active.id);
+    const overId = String(over.id);
+
+    setLocalGroups((prev) => {
+      const activeCol = findColOfId(activeId, prev);
+      if (!activeCol) return prev;
+
+      // Determine target column
+      const targetCol = STATUS_VALUES.has(overId) ? overId : (findColOfId(overId, prev) ?? activeCol);
+
+      const next = { ...prev };
+
+      if (activeCol !== targetCol) {
+        // Cross-column: status change
+        next[activeCol] = next[activeCol].filter((id) => id !== activeId);
+        next[targetCol] = [...(next[targetCol] ?? []), activeId];
+        if (onStatusChange) {
+          setTimeout(() => onStatusChange(activeId, targetCol), 0);
+        }
+      } else {
+        // Same column: reorder
+        if (!STATUS_VALUES.has(overId)) {
+          const oldIndex = next[activeCol].indexOf(activeId);
+          const newIndex = next[activeCol].indexOf(overId);
+          if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
+            next[activeCol] = arrayMove(next[activeCol], oldIndex, newIndex);
+          }
+        }
+        // Fire reorder if order actually changed
+        if (onReorder) {
+          const origCol = dragStartCol ?? activeCol;
+          if (origCol === activeCol) {
+            setTimeout(() => onReorder!(activeCol, next[activeCol]), 0);
+          }
+        }
+      }
+
+      return next;
+    });
   }
 
-  const canDrag = !!onStatusChange;
+  const draggingSnap = draggingId ? subMap[draggingId] ?? null : null;
 
   return (
     <DndContext
       sensors={sensors}
       collisionDetection={closestCenter}
       onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
     >
       <div className="flex gap-3 overflow-x-auto pb-4 items-start">
@@ -257,7 +359,8 @@ export default function KanbanBoard({ submissions, linkPrefix, pluginMap, onStat
             key={s.value}
             statusValue={s.value}
             statusLabel={s.label}
-            cards={grouped[s.value] ?? []}
+            orderedIds={localGroups[s.value] ?? []}
+            subMap={subMap}
             linkPrefix={linkPrefix}
             pluginMap={pluginMap}
             draggingId={draggingId}
@@ -266,7 +369,6 @@ export default function KanbanBoard({ submissions, linkPrefix, pluginMap, onStat
         ))}
       </div>
 
-      {/* Drag overlay — floats a ghost card while dragging */}
       <DragOverlay dropAnimation={null}>
         {draggingSnap && (
           <div className="w-[260px] opacity-95 rotate-1 shadow-2xl">
@@ -277,3 +379,4 @@ export default function KanbanBoard({ submissions, linkPrefix, pluginMap, onStat
     </DndContext>
   );
 }
+
