@@ -402,6 +402,12 @@ export default function SnapDetail() {
                   <dd className="text-gray-700 break-all text-xs">{sub.context.pageUrl}</dd>
                 </div>
               )}
+              {sub.context?.knackUserName && (
+                <div>
+                  <dt className="text-gray-400 text-xs">Submitted By</dt>
+                  <dd className="text-gray-700 font-medium">{sub.context.knackUserName}</dd>
+                </div>
+              )}
               {sub.context?.knackUserId && (
                 <div>
                   <dt className="text-gray-400 text-xs">Knack User ID</dt>
