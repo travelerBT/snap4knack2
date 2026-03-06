@@ -13,7 +13,7 @@ const secretClient = new SecretManagerServiceClient();
 const PROJECT_ID = "snap4knack2";
 const APP_DOMAIN = "https://snap4knack2.web.app";
 const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY || "";
-const SENDGRID_FROM = "noreply@finemountain.com";
+const SENDGRID_FROM = "info@finemountainconsulting.com";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
