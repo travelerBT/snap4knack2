@@ -39,6 +39,7 @@ export const PRIORITY_OPTIONS = [
 export const STATUS_OPTIONS = [
   { value: 'new', label: 'New', color: 'text-blue-800 bg-blue-100' },
   { value: 'in_progress', label: 'In Progress', color: 'text-yellow-800 bg-yellow-100' },
+  { value: 'ready_for_testing', label: 'Ready for Testing', color: 'text-purple-800 bg-purple-100' },
   { value: 'resolved', label: 'Resolved', color: 'text-green-800 bg-green-100' },
   { value: 'archived', label: 'Archived', color: 'text-gray-700 bg-gray-100' },
 ] as const;

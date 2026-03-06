@@ -48,7 +48,7 @@ export default function Dashboard() {
         const submissions = subSnap.docs.map((d) => ({ id: d.id, ...d.data() } as SnapSubmission));
         const today = new Date(); today.setHours(0, 0, 0, 0);
         const snapsToday = submissions.filter((s) => s.createdAt?.toDate?.() >= today).length;
-        const openItems = submissions.filter((s) => s.status === 'new' || s.status === 'in_progress').length;
+        const openItems = submissions.filter((s) => s.status === 'new' || s.status === 'in_progress' || s.status === 'ready_for_testing').length;
 
         setStats({
           connections: connSnap.size,

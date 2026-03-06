@@ -33,10 +33,11 @@ const CAPTURE_ICONS: Record<string, React.ReactNode> = {
 };
 
 const COLUMN_STYLES: Record<string, { bg: string; headerBg: string; border: string; count: string }> = {
-  new:         { bg: 'bg-blue-50',   headerBg: 'bg-blue-100',   border: 'border-blue-200',  count: 'bg-blue-200 text-blue-800' },
-  in_progress: { bg: 'bg-yellow-50', headerBg: 'bg-yellow-100', border: 'border-yellow-200', count: 'bg-yellow-200 text-yellow-800' },
-  resolved:    { bg: 'bg-green-50',  headerBg: 'bg-green-100',  border: 'border-green-200',  count: 'bg-green-200 text-green-800' },
-  archived:    { bg: 'bg-gray-50',   headerBg: 'bg-gray-100',   border: 'border-gray-200',   count: 'bg-gray-200 text-gray-700' },
+  new:                { bg: 'bg-blue-50',   headerBg: 'bg-blue-100',   border: 'border-blue-200',  count: 'bg-blue-200 text-blue-800' },
+  in_progress:        { bg: 'bg-yellow-50', headerBg: 'bg-yellow-100', border: 'border-yellow-200', count: 'bg-yellow-200 text-yellow-800' },
+  ready_for_testing:  { bg: 'bg-purple-50', headerBg: 'bg-purple-100', border: 'border-purple-200', count: 'bg-purple-200 text-purple-800' },
+  resolved:           { bg: 'bg-green-50',  headerBg: 'bg-green-100',  border: 'border-green-200',  count: 'bg-green-200 text-green-800' },
+  archived:           { bg: 'bg-gray-50',   headerBg: 'bg-gray-100',   border: 'border-gray-200',   count: 'bg-gray-200 text-gray-700' },
 };
 
 const STATUS_VALUES = new Set<string>(STATUS_OPTIONS.map((s) => s.value));

@@ -107,7 +107,7 @@ export type CaptureType =
   | 'screen_recording'
   | 'console_errors';
 
-export type SubmissionStatus = 'new' | 'in_progress' | 'resolved' | 'archived';
+export type SubmissionStatus = 'new' | 'in_progress' | 'ready_for_testing' | 'resolved' | 'archived';
 
 export interface ConsoleError {
   level?: 'log' | 'info' | 'warn' | 'error' | 'debug';
