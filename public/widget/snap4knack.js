@@ -65,15 +65,15 @@
         var msg = args.map(function (a) {
           try { return typeof a === 'object' ? JSON.stringify(a) : String(a); } catch (e) { return String(a); }
         }).join(' ');
-        // Ignore the widget's own internal debug lines (loader + auth, not app logs)
-          if (msg.indexOf('[Snap4Knack] loader') === -1 && msg.indexOf('[Snap4Knack] snap4knack.js') === -1 && msg.indexOf('[Snap4Knack] bundle') === -1 && msg.indexOf('[Snap4Knack] already loaded') === -1) {
-          state.consoleErrors.push({ level: level, message: msg, timestamp: Date.now() });
-          if (state.consoleErrors.length > 100) state.consoleErrors.shift();
-        }
+        state.consoleErrors.push({ level: level, message: msg, timestamp: Date.now() });
+        if (state.consoleErrors.length > 100) state.consoleErrors.shift();
       } catch (e) { /* ignore */ }
       _orig.apply(console, arguments);
     };
   });
+
+  // Signal that capture is live (appears in Console Output so user can confirm)
+  console.info('[Snap4Knack] console capture active');
 
   // ── Utils ──────────────────────────────────────────────────────────────────
 
