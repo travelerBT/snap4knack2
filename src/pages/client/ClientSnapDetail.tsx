@@ -9,7 +9,6 @@ import SEO from '../../components/SEO';
 import {
   ChevronLeftIcon,
   ChatBubbleLeftEllipsisIcon,
-  CheckCircleIcon,
   ExclamationCircleIcon,
 } from '@heroicons/react/24/outline';
 import type { SnapSubmission, SnapComment, AnnotationShape } from '../../types';
@@ -109,6 +108,8 @@ export default function ClientSnapDetail() {
     });
   };
 
+  const [updating, setUpdating] = useState(false);
+
   const postComment = async () => {
     if (!commentText.trim() || !id || !user) return;
     setPosting(true);
@@ -125,10 +126,11 @@ export default function ClientSnapDetail() {
     setPosting(false);
   };
 
-  const markResolved = async () => {
+  const updateStatus = async (status: string) => {
     if (!id || !sub) return;
-    await updateDoc(doc(db, 'snap_submissions', id), { status: 'resolved' });
-    // onSnapshot will reflect the change automatically
+    setUpdating(true);
+    await updateDoc(doc(db, 'snap_submissions', id), { status });
+    setUpdating(false);
   };
 
   if (loading) return <div className="space-y-3 animate-pulse">{[...Array(3)].map((_, i) => <div key={i} className="h-16 bg-gray-200 rounded-lg" />)}</div>;
@@ -141,7 +143,6 @@ export default function ClientSnapDetail() {
     </div>
   );
 
-  const statusOpt = STATUS_OPTIONS.find((s) => s.value === sub.status);
   const priorityOpt = PRIORITY_OPTIONS.find((p) => p.value === sub.priority);
 
   return (
@@ -236,19 +237,27 @@ export default function ClientSnapDetail() {
           </div>
 
           <div className="flex gap-2 flex-wrap">
-            {statusOpt && <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${statusOpt.color}`}>{statusOpt.label}</span>}
             {priorityOpt && <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${priorityOpt.color}`}>{priorityOpt.label}</span>}
           </div>
 
-          {sub.status !== 'resolved' && (
-            <button
-              onClick={markResolved}
-              className="w-full flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium px-4 py-2 rounded-lg"
-            >
-              <CheckCircleIcon className="h-4 w-4" />
-              Mark Resolved
-            </button>
-          )}
+          {/* Status */}
+          <div className="bg-white shadow rounded-lg p-5">
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Status</h3>
+            <div className="flex flex-wrap gap-2">
+              {STATUS_OPTIONS.map((s) => (
+                <button
+                  key={s.value}
+                  onClick={() => updateStatus(s.value)}
+                  disabled={updating}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border-2 transition-colors ${
+                    sub.status === s.value ? `${s.color} border-current` : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                  }`}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     </div>

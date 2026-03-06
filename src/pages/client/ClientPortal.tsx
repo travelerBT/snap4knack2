@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { collection, query, where, orderBy, onSnapshot, writeBatch, doc } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, writeBatch, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import SEO from '../../components/SEO';
@@ -34,6 +34,10 @@ export default function ClientPortal() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [view, setView] = useState<'list' | 'kanban'>('kanban');
+
+  const handleStatusChange = async (id: string, newStatus: string) => {
+    await updateDoc(doc(db, 'snap_submissions', id), { status: newStatus });
+  };
 
   const handleReorder = async (_columnStatus: string, orderedIds: string[]) => {
     const batch = writeBatch(db);
@@ -151,6 +155,7 @@ export default function ClientPortal() {
         <KanbanBoard
           submissions={filtered}
           linkPrefix="/client-portal/snap"
+          onStatusChange={handleStatusChange}
           onReorder={handleReorder}
         />
       ) : (
