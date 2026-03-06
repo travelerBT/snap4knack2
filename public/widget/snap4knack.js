@@ -1068,6 +1068,7 @@
         scrollX: window.scrollX,
         scrollY: window.scrollY,
         knackUserId: state.knackUser && (state.knackUser.id || state.knackUser.email),
+        knackUserName: state.knackUser && state.knackUser.name,
         knackRole: state.knackRole,
       };
 

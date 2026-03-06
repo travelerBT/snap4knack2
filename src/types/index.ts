@@ -122,6 +122,7 @@ export interface SubmissionContext {
   knackRecordId?: string;
   userAgent?: string;
   knackUserId?: string;
+  knackUserName?: string;
   knackRole?: string;       // Knack object key e.g. 'object_1'
   knackUserRole?: string;   // alias
   viewportWidth?: number;

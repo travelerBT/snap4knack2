@@ -297,7 +297,12 @@ function SubmissionRow({ sub, pluginName }: { sub: SnapSubmission; pluginName: s
           </span>
         </div>
         <p className="text-xs text-gray-400 truncate mt-0.5">{sub.context?.pageUrl ?? '—'}</p>
-        <p className="text-xs text-gray-400 mt-0.5">{pluginName} · {sub.context?.knackUserId ?? 'anonymous'}</p>
+        <p className="text-xs text-gray-400 mt-0.5">
+            {pluginName}
+            {sub.context?.knackUserName && <> · <span className="font-medium text-gray-500">{sub.context.knackUserName}</span></>}
+            {sub.context?.knackUserId && <> · <span className="font-mono">{sub.context.knackUserId}</span></>}
+            {!sub.context?.knackUserName && !sub.context?.knackUserId && <> · anonymous</>}
+          </p>
       </div>
       {/* Badges */}
       <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
