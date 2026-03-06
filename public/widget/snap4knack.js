@@ -29,6 +29,7 @@
   var state = {
     config: null,
     idToken: null,
+    idTokenAcquiredAt: 0,
     knackUser: null,
     knackRole: null,
     open: false,
@@ -176,6 +177,26 @@
     }).catch(function (e) {
       console.warn('[Snap4Knack] Could not fetch plugin branding:', e.message);
     });
+  }
+
+  // Ensures a valid (non-expired) Firebase ID token is in state.idToken.
+  // Firebase ID tokens expire after 1 hour; refresh after 50 minutes.
+  function ensureFreshToken() {
+    var EXPIRY_MS = 50 * 60 * 1000; // 50 minutes
+    var tokenAge = Date.now() - state.idTokenAcquiredAt;
+    if (state.idToken && tokenAge < EXPIRY_MS) {
+      return Promise.resolve(state.idToken);
+    }
+    if (!state.knackUser || !state.config) {
+      return Promise.reject(new Error('Not authenticated'));
+    }
+    var userId = state.knackUser.id || state.knackUser.email || 'anonymous';
+    return getWidgetToken(state.config.pluginId, state.config.tenantId, userId, state.knackRole)
+      .then(function (idToken) {
+        state.idToken = idToken;
+        state.idTokenAcquiredAt = Date.now();
+        return idToken;
+      });
   }
 
   function exchangeCustomToken(customToken) {
@@ -1071,16 +1092,19 @@
   // ── Snap submission ────────────────────────────────────────────────────────
 
   function submitSnap() {
-    // Upload screenshot to Firebase Storage if needed
-    var uploadPromise = Promise.resolve(null);
+    // Ensure a fresh Firebase ID token before attempting any upload or submit
+    ensureFreshToken().then(function () {
+      // Upload screenshot to Firebase Storage if needed
+      var uploadPromise = Promise.resolve(null);
 
-    if (state.captureDataUrl && !state.captureIsVideo) {
-      uploadPromise = uploadScreenshot(state.captureDataUrl);
-    } else if (state.captureBlob && state.captureIsVideo) {
-      uploadPromise = uploadRecording(state.captureBlob);
-    }
+      if (state.captureDataUrl && !state.captureIsVideo) {
+        uploadPromise = uploadScreenshot(state.captureDataUrl);
+      } else if (state.captureBlob && state.captureIsVideo) {
+        uploadPromise = uploadRecording(state.captureBlob);
+      }
 
-    uploadPromise.then(function (mediaUrl) {
+      return uploadPromise;
+    }).then(function (mediaUrl) {
       var screenshotUrl = state.captureIsVideo ? null : mediaUrl;
       var recordingUrl = state.captureIsVideo ? mediaUrl : null;
 
@@ -1258,6 +1282,7 @@
     getWidgetToken(state.config.pluginId, state.config.tenantId, userId, knackRole)
       .then(function (idToken) {
         state.idToken = idToken;
+        state.idTokenAcquiredAt = Date.now();
         return fetchPluginBranding(state.config.pluginId, state.config.tenantId, idToken);
       })
       .then(function () {
