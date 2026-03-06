@@ -110,6 +110,7 @@ export type CaptureType =
 export type SubmissionStatus = 'new' | 'in_progress' | 'resolved' | 'archived';
 
 export interface ConsoleError {
+  level?: 'log' | 'info' | 'warn' | 'error' | 'debug';
   message: string;
   source?: string;   // URL or stack snippet
   stack?: string;

@@ -48,7 +48,7 @@ export const CAPTURE_TYPE_LABELS: Record<string, string> = {
   select_area: 'Selected Area',
   element_pin: 'Pinned Element',
   screen_recording: 'Screen Recording',
-  console_errors: 'Console Errors',
+  console_errors: 'Console Output',
 };
 
 // ─── Plugin Defaults ─────────────────────────────────────────────────────────

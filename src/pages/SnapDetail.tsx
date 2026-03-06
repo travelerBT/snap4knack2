@@ -217,21 +217,28 @@ export default function SnapDetail() {
             ) : sub.type === 'console_errors' ? (
               <div className="bg-gray-900 p-5">
                 <div className="flex items-center gap-2 mb-3">
-                  <CommandLineIcon className="h-5 w-5 text-red-400" />
-                  <span className="text-sm font-semibold text-gray-200">Console Errors ({sub.consoleErrors?.length ?? 0})</span>
+                  <CommandLineIcon className="h-5 w-5 text-green-400" />
+                  <span className="text-sm font-semibold text-gray-200">Console Output ({sub.consoleErrors?.length ?? 0})</span>
                 </div>
                 {sub.consoleErrors && sub.consoleErrors.length > 0 ? (
-                  <div className="space-y-2">
-                    {sub.consoleErrors.map((err, i) => (
-                      <div key={i} className="bg-gray-800 rounded-lg px-4 py-3">
-                        <p className="text-xs text-red-400 font-mono break-all">{err.message}</p>
-                        {err.source && <p className="text-xs text-gray-500 font-mono mt-1 break-all">{err.source}</p>}
-                        {err.timestamp && <p className="text-xs text-gray-600 mt-1">{new Date(err.timestamp).toLocaleTimeString()}</p>}
-                      </div>
-                    ))}
+                  <div className="space-y-1">
+                    {sub.consoleErrors.map((entry, i) => {
+                      const lvl = entry.level ?? 'log';
+                      const levelColor = lvl === 'error' ? 'text-red-400' : lvl === 'warn' ? 'text-yellow-400' : lvl === 'info' ? 'text-blue-400' : lvl === 'debug' ? 'text-purple-400' : 'text-gray-300';
+                      const badge = lvl === 'error' ? 'bg-red-900 text-red-300' : lvl === 'warn' ? 'bg-yellow-900 text-yellow-300' : lvl === 'info' ? 'bg-blue-900 text-blue-300' : lvl === 'debug' ? 'bg-purple-900 text-purple-300' : 'bg-gray-700 text-gray-400';
+                      return (
+                        <div key={i} className="flex items-start gap-2 bg-gray-800 rounded px-3 py-2">
+                          <span className={`inline-block text-[10px] font-bold uppercase px-1.5 py-0.5 rounded flex-shrink-0 mt-0.5 ${badge}`}>{lvl}</span>
+                          <div className="min-w-0 flex-1">
+                            <p className={`text-xs font-mono break-all ${levelColor}`}>{entry.message}</p>
+                            {entry.timestamp && <p className="text-[10px] text-gray-600 mt-0.5">{new Date(entry.timestamp).toLocaleTimeString()}</p>}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 ) : (
-                  <p className="text-sm text-gray-400 italic">No console errors were captured at the time of submission.</p>
+                  <p className="text-sm text-gray-400 italic">No console output was captured at the time of submission.</p>
                 )}
               </div>
             ) : (
@@ -241,7 +248,7 @@ export default function SnapDetail() {
             )}
           </div>
 
-          {/* Console errors — collapsible, shown for screenshot/recording snaps that also captured errors */}
+          {/* Console output — collapsible, shown for screenshot/recording snaps that also captured logs */}
           {sub.type !== 'console_errors' && sub.consoleErrors && sub.consoleErrors.length > 0 && (
             <div className="bg-white shadow rounded-lg overflow-hidden">
               <button
@@ -249,19 +256,24 @@ export default function SnapDetail() {
                 className="w-full flex items-center justify-between px-5 py-3 text-sm font-medium text-gray-700 hover:bg-gray-50"
               >
                 <span className="flex items-center gap-2">
-                  <CommandLineIcon className="h-4 w-4 text-red-500" />
-                  Console Errors ({sub.consoleErrors.length})
+                  <CommandLineIcon className="h-4 w-4 text-green-600" />
+                  Console Output ({sub.consoleErrors.length})
                 </span>
                 {showConsole ? <ChevronUpIcon className="h-4 w-4" /> : <ChevronDownIcon className="h-4 w-4" />}
               </button>
               {showConsole && (
-                <div className="bg-gray-900 divide-y divide-gray-700">
-                  {sub.consoleErrors.map((err, i) => (
-                    <div key={i} className="px-4 py-2">
-                      <p className="text-xs text-red-400 font-mono">{err.message}</p>
-                      {err.source && <p className="text-xs text-gray-500 font-mono">{err.source}</p>}
-                    </div>
-                  ))}
+                <div className="bg-gray-900 divide-y divide-gray-800 p-3 space-y-1">
+                  {sub.consoleErrors.map((entry, i) => {
+                    const lvl = entry.level ?? 'log';
+                    const levelColor = lvl === 'error' ? 'text-red-400' : lvl === 'warn' ? 'text-yellow-400' : lvl === 'info' ? 'text-blue-400' : lvl === 'debug' ? 'text-purple-400' : 'text-gray-300';
+                    const badge = lvl === 'error' ? 'bg-red-900 text-red-300' : lvl === 'warn' ? 'bg-yellow-900 text-yellow-300' : lvl === 'info' ? 'bg-blue-900 text-blue-300' : lvl === 'debug' ? 'bg-purple-900 text-purple-300' : 'bg-gray-700 text-gray-400';
+                    return (
+                      <div key={i} className="flex items-start gap-2 rounded px-2 py-1.5">
+                        <span className={`inline-block text-[10px] font-bold uppercase px-1.5 py-0.5 rounded flex-shrink-0 mt-0.5 ${badge}`}>{lvl}</span>
+                        <p className={`text-xs font-mono break-all ${levelColor}`}>{entry.message}</p>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>

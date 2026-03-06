@@ -55,21 +55,25 @@
     categories: ['Bug', 'Feature Request', 'Question', 'Other'],
   };
 
-  // ── Console error capture ──────────────────────────────────────────────────
+  // ── Console capture (all levels) ──────────────────────────────────────────
 
-  var _origError = console.error.bind(console);
-  console.error = function () {
-    try {
-      var args = Array.prototype.slice.call(arguments);
-      state.consoleErrors.push({
-        message: args.map(function(a){ return String(a); }).join(' '),
-        source: new Error().stack || '',
-        timestamp: Date.now(),
-      });
-      if (state.consoleErrors.length > 50) state.consoleErrors.shift();
-    } catch (e) { /* ignore */ }
-    _origError.apply(console, arguments);
-  };
+  ['log', 'info', 'warn', 'error', 'debug'].forEach(function (level) {
+    var _orig = console[level].bind(console);
+    console[level] = function () {
+      try {
+        var args = Array.prototype.slice.call(arguments);
+        var msg = args.map(function (a) {
+          try { return typeof a === 'object' ? JSON.stringify(a) : String(a); } catch (e) { return String(a); }
+        }).join(' ');
+        // Ignore the widget's own log lines
+        if (msg.indexOf('[Snap4Knack]') === -1) {
+          state.consoleErrors.push({ level: level, message: msg, timestamp: Date.now() });
+          if (state.consoleErrors.length > 100) state.consoleErrors.shift();
+        }
+      } catch (e) { /* ignore */ }
+      _orig.apply(console, arguments);
+    };
+  });
 
   // ── Utils ──────────────────────────────────────────────────────────────────
 
@@ -318,7 +322,7 @@
       { id: MODES.AREA,      icon: SVG_AREA,    label: 'Select Area',    desc: 'Draw a region to capture' },
       { id: MODES.PIN,       icon: SVG_PIN,     label: 'Pin Element',    desc: 'Click on a specific element' },
       { id: MODES.RECORDING, icon: SVG_RECORD,  label: 'Record Screen',  desc: 'Record up to 30 seconds' },
-      { id: MODES.CONSOLE,   icon: SVG_CONSOLE, label: 'Console Errors', desc: 'Attach recent JS errors (' + state.consoleErrors.length + ')' },
+      { id: MODES.CONSOLE,   icon: SVG_CONSOLE, label: 'Console Output', desc: 'Attach console logs, warnings & errors (' + state.consoleErrors.length + ')' },
     ];
 
     modes.forEach(function (m) {
