@@ -7,6 +7,7 @@ import {
   orderBy,
   limit,
   getDocs,
+  onSnapshot,
   startAfter,
   QueryDocumentSnapshot,
   DocumentData,
@@ -42,13 +43,15 @@ export default function SnapFeed() {
   const { user } = useAuth();
   const tenantId = user?.uid || '';
 
-  const [submissions, setSubmissions] = useState<SnapSubmission[]>([]);
+  const [liveItems, setLiveItems] = useState<SnapSubmission[]>([]);
+  const [moreItems, setMoreItems] = useState<SnapSubmission[]>([]);
+  const [lastLiveDoc, setLastLiveDoc] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
+  const [lastMoreDoc, setLastMoreDoc] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
   const [plugins, setPlugins] = useState<SnapPlugin[]>([]);
   const [connections, setConnections] = useState<Connection[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [lastDoc, setLastDoc] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
-  const [hasMore, setHasMore] = useState(true);
+  const [hasMore, setHasMore] = useState(false);
 
   // Filters
   const [search, setSearch] = useState('');
@@ -70,17 +73,13 @@ export default function SnapFeed() {
     loadMeta();
   }, [tenantId]);
 
+  // Real-time listener for first page — re-subscribes when filters change
   useEffect(() => {
     if (!tenantId) return;
     setLoading(true);
-    setSubmissions([]);
-    setLastDoc(null);
-    setHasMore(true);
-    fetchPage(null);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenantId, pluginFilter, statusFilter, typeFilter, priorityFilter]);
+    setMoreItems([]);
+    setLastMoreDoc(null);
 
-  const fetchPage = async (after: QueryDocumentSnapshot<DocumentData> | null) => {
     const constraints: Parameters<typeof query>[1][] = [
       where('tenantId', '==', tenantId),
       orderBy('createdAt', 'desc'),
@@ -90,23 +89,49 @@ export default function SnapFeed() {
     if (statusFilter) constraints.push(where('status', '==', statusFilter));
     if (typeFilter) constraints.push(where('type', '==', typeFilter));
     if (priorityFilter) constraints.push(where('priority', '==', priorityFilter));
-    if (after) constraints.push(startAfter(after));
+
+    const q = query(collection(db, 'snap_submissions'), ...constraints);
+    const unsub = onSnapshot(q, (snap) => {
+      setLiveItems(snap.docs.map((d) => ({ id: d.id, ...d.data() } as SnapSubmission)));
+      setLastLiveDoc(snap.docs[snap.docs.length - 1] ?? null);
+      setHasMore(snap.size === PAGE_SIZE);
+      setLoading(false);
+    });
+    return unsub;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tenantId, pluginFilter, statusFilter, typeFilter, priorityFilter]);
+
+  const handleLoadMore = async () => {
+    const cursor = lastMoreDoc ?? lastLiveDoc;
+    if (!cursor || loadingMore) return;
+    setLoadingMore(true);
+
+    const constraints: Parameters<typeof query>[1][] = [
+      where('tenantId', '==', tenantId),
+      orderBy('createdAt', 'desc'),
+      limit(PAGE_SIZE),
+      startAfter(cursor),
+    ];
+    if (pluginFilter) constraints.push(where('pluginId', '==', pluginFilter));
+    if (statusFilter) constraints.push(where('status', '==', statusFilter));
+    if (typeFilter) constraints.push(where('type', '==', typeFilter));
+    if (priorityFilter) constraints.push(where('priority', '==', priorityFilter));
 
     const q = query(collection(db, 'snap_submissions'), ...constraints);
     const snap = await getDocs(q);
     const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() } as SnapSubmission));
-    setSubmissions((prev) => (after ? [...prev, ...docs] : docs));
-    setLastDoc(snap.docs[snap.docs.length - 1] ?? null);
+    setMoreItems((prev) => [...prev, ...docs]);
+    setLastMoreDoc(snap.docs[snap.docs.length - 1] ?? null);
     setHasMore(snap.size === PAGE_SIZE);
-    setLoading(false);
     setLoadingMore(false);
   };
 
-  const handleLoadMore = () => {
-    if (!lastDoc || loadingMore) return;
-    setLoadingMore(true);
-    fetchPage(lastDoc);
-  };
+  // Merge live first page with any additional pages loaded via "Load More"
+  const liveIds = useMemo(() => new Set(liveItems.map((s) => s.id)), [liveItems]);
+  const submissions = useMemo(
+    () => [...liveItems, ...moreItems.filter((s) => !liveIds.has(s.id))],
+    [liveItems, moreItems, liveIds]
+  );
 
   const filtered = useMemo(() => {
     if (!search.trim()) return submissions;

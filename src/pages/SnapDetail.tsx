@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
-  doc, getDoc, updateDoc, collection, getDocs, addDoc, serverTimestamp,
+  doc, updateDoc, collection, addDoc, serverTimestamp,
+  query, orderBy, onSnapshot,
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
@@ -40,16 +41,27 @@ export default function SnapDetail() {
 
   useEffect(() => {
     if (!id) return;
-    const load = async () => {
-      const [subDoc, commentsSnap] = await Promise.all([
-        getDoc(doc(db, 'snap_submissions', id)),
-        getDocs(collection(db, 'snap_submissions', id, 'comments')),
-      ]);
-      if (subDoc.exists()) setSub({ id: subDoc.id, ...subDoc.data() } as SnapSubmission);
-      setComments(commentsSnap.docs.map((d) => ({ id: d.id, ...d.data() } as SnapComment)));
-      setLoading(false);
+
+    // Live listener on the submission doc — picks up status/priority changes
+    const unsubDoc = onSnapshot(
+      doc(db, 'snap_submissions', id),
+      (snap) => {
+        if (snap.exists()) setSub({ id: snap.id, ...snap.data() } as SnapSubmission);
+        setLoading(false);
+      },
+      () => setLoading(false)
+    );
+
+    // Live listener on comments — picks up new comments in real time
+    const unsubComments = onSnapshot(
+      query(collection(db, 'snap_submissions', id, 'comments'), orderBy('createdAt', 'asc')),
+      (snap) => setComments(snap.docs.map((d) => ({ id: d.id, ...d.data() } as SnapComment)))
+    );
+
+    return () => {
+      unsubDoc();
+      unsubComments();
     };
-    load();
   }, [id]);
 
   // Draw annotations on canvas once image loads
@@ -128,8 +140,8 @@ export default function SnapDetail() {
       text: commentText.trim(),
       createdAt: serverTimestamp() as SnapComment['createdAt'],
     };
-    const ref = await addDoc(collection(db, 'snap_submissions', id, 'comments'), c);
-    setComments((prev) => [...prev, { id: ref.id, ...c }]);
+    await addDoc(collection(db, 'snap_submissions', id, 'comments'), c);
+    // No manual setComments — the onSnapshot listener will pick up the new comment
     setCommentText('');
     setPostingComment(false);
   };
@@ -138,7 +150,7 @@ export default function SnapDetail() {
     if (!id || !sub) return;
     setUpdating(true);
     await updateDoc(doc(db, 'snap_submissions', id), { status });
-    setSub({ ...sub, status: status as SnapSubmission['status'] });
+    // onSnapshot will update sub automatically
     setUpdating(false);
   };
 
@@ -146,7 +158,7 @@ export default function SnapDetail() {
     if (!id || !sub) return;
     setUpdating(true);
     await updateDoc(doc(db, 'snap_submissions', id), { priority });
-    setSub({ ...sub, priority: priority as SnapSubmission['priority'] });
+    // onSnapshot will update sub automatically
     setUpdating(false);
   };
 
