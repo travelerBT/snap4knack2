@@ -26,6 +26,7 @@ export default function ApiKeys() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [newKeyValue, setNewKeyValue] = useState<string | null>(null);
   const [modal, setModal] = useState({ open: false, type: 'success' as 'success' | 'error', title: '', message: '' });
+  const [revokeConfirm, setRevokeConfirm] = useState<{ open: boolean; keyId: string }>({ open: false, keyId: '' });
 
   useEffect(() => {
     if (!tenantId) return;
@@ -58,10 +59,20 @@ export default function ApiKeys() {
     setCreating(false);
   };
 
-  const revokeKey = async (id: string) => {
-    if (!window.confirm('Revoke this API key? This cannot be undone.')) return;
-    await updateDoc(doc(db, 'tenants', tenantId, 'api_keys', id), { status: 'revoked' });
-    setKeys((prev) => prev.map((k) => k.id === id ? { ...k, status: 'revoked' } : k));
+  const revokeKey = (id: string) => {
+    setRevokeConfirm({ open: true, keyId: id });
+  };
+
+  const doRevokeKey = async () => {
+    const id = revokeConfirm.keyId;
+    setRevokeConfirm({ open: false, keyId: '' });
+    try {
+      await updateDoc(doc(db, 'tenants', tenantId, 'api_keys', id), { status: 'revoked' });
+      setKeys((prev) => prev.map((k) => k.id === id ? { ...k, status: 'revoked' } : k));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to revoke key.';
+      setModal({ open: true, type: 'error', title: 'Revoke failed', message: msg });
+    }
   };
 
   const copy = (text: string, id: string) => {
@@ -190,6 +201,16 @@ export default function ApiKeys() {
       )}
 
       <Modal open={modal.open} type={modal.type} title={modal.title} message={modal.message} onClose={() => setModal((m) => ({ ...m, open: false }))} />
+      <Modal
+        open={revokeConfirm.open}
+        type="warning"
+        title="Revoke API key"
+        message="This key will stop working immediately. Any integrations using it will break. This cannot be undone."
+        confirmLabel="Revoke key"
+        cancelLabel="Cancel"
+        onConfirm={doRevokeKey}
+        onClose={() => setRevokeConfirm({ open: false, keyId: '' })}
+      />
     </div>
   );
 }

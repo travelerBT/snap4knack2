@@ -38,8 +38,10 @@ export default function SnapPluginDetails() {
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviting, setInviting] = useState(false);
 
-  // Modal
+  // Info/success/error modal
   const [modal, setModal] = useState({ open: false, type: 'success' as 'success' | 'error', title: '', message: '' });
+  // Confirm revoke modal
+  const [revokeConfirm, setRevokeConfirm] = useState<{ open: boolean; invId: string }>({ open: false, invId: '' });
 
   useEffect(() => {
     if (!tenantId || !id) return;
@@ -114,8 +116,13 @@ export default function SnapPluginDetails() {
     }
   };
 
-  const handleRevoke = async (invId: string) => {
-    if (!window.confirm('Revoke this invitation? The client will immediately lose portal access.')) return;
+  const handleRevoke = (invId: string) => {
+    setRevokeConfirm({ open: true, invId });
+  };
+
+  const doRevoke = async () => {
+    const invId = revokeConfirm.invId;
+    setRevokeConfirm({ open: false, invId: '' });
     try {
       const revokeClientAccess = httpsCallable(functions, 'revokeClientAccess');
       await revokeClientAccess({ invitationId: invId });
@@ -282,6 +289,16 @@ s.onload=function(){Snap4KnackLoader.init({
       )}
 
       <Modal open={modal.open} type={modal.type} title={modal.title} message={modal.message} onClose={() => setModal((m) => ({ ...m, open: false }))} />
+      <Modal
+        open={revokeConfirm.open}
+        type="warning"
+        title="Revoke invitation"
+        message="This client will immediately lose access to the portal. This cannot be undone."
+        confirmLabel="Revoke access"
+        cancelLabel="Cancel"
+        onConfirm={doRevoke}
+        onClose={() => setRevokeConfirm({ open: false, invId: '' })}
+      />
     </div>
   );
 }

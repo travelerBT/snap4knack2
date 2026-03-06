@@ -288,12 +288,12 @@ export const submitSnap = functions.https.onRequest(
       res.status(401).json({ error: "Invalid auth token" }); return;
     }
 
-    const snap_tenantId = (decoded as Record<string, string>).snap_tenantId;
-    const snap_pluginId = (decoded as Record<string, string>).snap_pluginId;
-    const knackUserId = (decoded as Record<string, string>).knackUserId;
-    const knackUserRole = (decoded as Record<string, string>).knackUserRole;
-    const tenantId = snap_tenantId;
-    const pluginId = snap_pluginId;
+    const claims = decoded as Record<string, unknown>;
+    // Support both new (snap_tenantId) and legacy (tenantId) claim names during transition
+    const tenantId = (claims.snap_tenantId || claims.tenantId) as string | undefined;
+    const pluginId = (claims.snap_pluginId || claims.pluginId) as string | undefined;
+    const knackUserId = claims.knackUserId as string | undefined;
+    const knackUserRole = claims.knackUserRole as string | undefined;
     if (!tenantId || !pluginId) { res.status(400).json({ error: "Token missing claims" }); return; }
 
     const body = req.body as Record<string, unknown>;
