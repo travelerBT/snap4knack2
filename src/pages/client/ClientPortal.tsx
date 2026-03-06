@@ -4,6 +4,7 @@ import { collection, query, where, orderBy, getDocs } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import SEO from '../../components/SEO';
+import KanbanBoard from '../../components/KanbanBoard';
 import {
   PhotoIcon,
   VideoCameraIcon,
@@ -12,6 +13,8 @@ import {
   CommandLineIcon,
   MagnifyingGlassIcon,
   ClipboardDocumentListIcon,
+  Squares2X2Icon,
+  ListBulletIcon,
 } from '@heroicons/react/24/outline';
 import type { SnapSubmission } from '../../types';
 import { STATUS_OPTIONS, PRIORITY_OPTIONS, CAPTURE_TYPE_LABELS } from '../../config/constants';
@@ -30,6 +33,7 @@ export default function ClientPortal() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [view, setView] = useState<'list' | 'kanban'>('list');
 
   useEffect(() => {
     if (!clientAccess || clientAccess.length === 0) {
@@ -85,7 +89,25 @@ export default function ClientPortal() {
           <h1 className="text-2xl font-bold text-gray-900">My Snaps</h1>
           <p className="text-sm text-gray-500 mt-1">Feedback submissions you have access to.</p>
         </div>
-        <p className="text-sm text-gray-400 mt-1 sm:mt-0">{filtered.length} snap{filtered.length !== 1 ? 's' : ''}</p>
+        <div className="flex items-center gap-3 mt-2 sm:mt-0">
+          <p className="text-sm text-gray-400">{filtered.length} snap{filtered.length !== 1 ? 's' : ''}</p>
+          <div className="flex rounded-lg border border-gray-200 overflow-hidden">
+            <button
+              onClick={() => setView('list')}
+              className={`p-1.5 ${view === 'list' ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
+              title="List view"
+            >
+              <ListBulletIcon className="h-5 w-5" />
+            </button>
+            <button
+              onClick={() => setView('kanban')}
+              className={`p-1.5 ${view === 'kanban' ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
+              title="Kanban view"
+            >
+              <Squares2X2Icon className="h-5 w-5" />
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Filters */}
@@ -120,6 +142,11 @@ export default function ClientPortal() {
           <p className="mt-3 text-base font-medium text-gray-900">No snaps yet</p>
           <p className="mt-1 text-sm text-gray-500">Submissions will appear here as your team captures them.</p>
         </div>
+      ) : view === 'kanban' ? (
+        <KanbanBoard
+          submissions={filtered}
+          linkPrefix="/client-portal/snap"
+        />
       ) : (
         <div className="bg-white shadow rounded-lg overflow-hidden">
           <div className="divide-y divide-gray-100">

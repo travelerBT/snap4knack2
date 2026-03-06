@@ -9,12 +9,15 @@ import {
   getDocs,
   onSnapshot,
   startAfter,
+  updateDoc,
+  doc,
   QueryDocumentSnapshot,
   DocumentData,
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import SEO from '../components/SEO';
+import KanbanBoard from '../components/KanbanBoard';
 import {
   MagnifyingGlassIcon,
   FunnelIcon,
@@ -25,6 +28,8 @@ import {
   CommandLineIcon,
   ClipboardDocumentListIcon,
   LinkIcon,
+  Squares2X2Icon,
+  ListBulletIcon,
 } from '@heroicons/react/24/outline';
 import type { SnapSubmission, SnapPlugin, Connection } from '../types';
 import { STATUS_OPTIONS, PRIORITY_OPTIONS, CAPTURE_TYPE_LABELS } from '../config/constants';
@@ -52,6 +57,7 @@ export default function SnapFeed() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
+  const [view, setView] = useState<'list' | 'kanban'>('list');
 
   // Filters
   const [search, setSearch] = useState('');
@@ -167,12 +173,35 @@ export default function SnapFeed() {
     }));
   }, [filtered, pluginMap, connectionMap]);
 
+  const handleStatusChange = async (id: string, newStatus: string) => {
+    await updateDoc(doc(db, 'snap_submissions', id), { status: newStatus });
+  };
+
   return (
     <div>
       <SEO title="Snap Feed" />
       <div className="sm:flex sm:items-center sm:justify-between mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Snap Feed</h1>
-        <p className="text-sm text-gray-500 mt-1 sm:mt-0">{submissions.length} submission{submissions.length !== 1 ? 's' : ''} loaded</p>
+        <div className="flex items-center gap-3 mt-2 sm:mt-0">
+          <p className="text-sm text-gray-500">{submissions.length} submission{submissions.length !== 1 ? 's' : ''} loaded</p>
+          {/* View toggle */}
+          <div className="flex rounded-lg border border-gray-200 overflow-hidden">
+            <button
+              onClick={() => setView('list')}
+              className={`p-1.5 ${ view === 'list' ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
+              title="List view"
+            >
+              <ListBulletIcon className="h-5 w-5" />
+            </button>
+            <button
+              onClick={() => setView('kanban')}
+              className={`p-1.5 ${ view === 'kanban' ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
+              title="Kanban view"
+            >
+              <Squares2X2Icon className="h-5 w-5" />
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Filter bar */}
@@ -244,6 +273,13 @@ export default function SnapFeed() {
           <p className="mt-3 text-base font-medium text-gray-900">No snaps yet</p>
           <p className="mt-1 text-sm text-gray-500">Submissions from your Knack apps will appear here.</p>
         </div>
+      ) : view === 'kanban' ? (
+        <KanbanBoard
+          submissions={filtered}
+          linkPrefix="/snap-feed"
+          pluginMap={pluginMap}
+          onStatusChange={handleStatusChange}
+        />
       ) : (
         <>
           <div className="space-y-6">
