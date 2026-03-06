@@ -20,7 +20,7 @@ const SENDGRID_FROM = "noreply@finemountain.com";
 async function getSendGridKey(): Promise<string> {
   try {
     const [version] = await secretClient.accessSecretVersion({
-      name: `projects/${PROJECT_ID}/secrets/SENDGRID_API_KEY/versions/latest`,
+      name: `projects/${PROJECT_ID}/secrets/sendgrid-api-key/versions/latest`,
     });
     return (version.payload?.data?.toString() || SENDGRID_API_KEY).trim();
   } catch {
