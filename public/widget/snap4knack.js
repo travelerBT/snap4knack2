@@ -72,6 +72,28 @@
     };
   });
 
+  // Catch unhandled promise rejections (not routed through console.error)
+  window.addEventListener('unhandledrejection', function (event) {
+    try {
+      var reason = event.reason;
+      var msg = reason
+        ? (reason.stack || reason.message || String(reason))
+        : 'Unhandled promise rejection';
+      state.consoleErrors.push({ level: 'error', message: 'Uncaught (in promise): ' + msg, timestamp: Date.now() });
+      if (state.consoleErrors.length > 100) state.consoleErrors.shift();
+    } catch (e) { /* ignore */ }
+  });
+
+  // Catch synchronous uncaught errors
+  window.addEventListener('error', function (event) {
+    try {
+      var msg = event.message || 'Script error';
+      if (event.filename) msg += ' at ' + event.filename + ':' + event.lineno;
+      state.consoleErrors.push({ level: 'error', message: 'Uncaught error: ' + msg, timestamp: Date.now() });
+      if (state.consoleErrors.length > 100) state.consoleErrors.shift();
+    } catch (e) { /* ignore */ }
+  }, true); // capture phase so it fires before any other handlers
+
   // Signal that capture is live (appears in Console Output so user can confirm)
   console.info('[Snap4Knack] console capture active');
 
