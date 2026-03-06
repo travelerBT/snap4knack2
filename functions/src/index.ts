@@ -455,3 +455,53 @@ export const revokeClientAccess = functions.https.onCall(
     return { success: true };
   }
 );
+
+// ── contactForm ───────────────────────────────────────────────────────────────
+
+export const contactForm = functions.https.onRequest(
+  { cors: true },
+  async (req, res) => {
+    if (req.method === "OPTIONS") { res.status(204).send(""); return; }
+    if (req.method !== "POST") { res.status(405).json({ error: "Method not allowed" }); return; }
+
+    const { name, email, company, message } = req.body as {
+      name?: string; email?: string; company?: string; message?: string;
+    };
+
+    if (!name?.trim() || !email?.trim() || !message?.trim()) {
+      res.status(400).json({ error: "name, email and message are required" });
+      return;
+    }
+
+    const key = await getSendGridKey();
+    if (!key) {
+      res.status(500).json({ error: "Email not configured" });
+      return;
+    }
+
+    sgMail.setApiKey(key);
+
+    const subject = `Snap4Knack Contact Form — ${name}`;
+    const html = `
+      <h2>New Contact Form Submission</h2>
+      <table style="border-collapse:collapse;width:100%;max-width:600px">
+        <tr><td style="padding:8px;font-weight:bold;color:#555">Name</td><td style="padding:8px">${name}</td></tr>
+        <tr><td style="padding:8px;font-weight:bold;color:#555">Email</td><td style="padding:8px"><a href="mailto:${email}">${email}</a></td></tr>
+        ${company ? `<tr><td style="padding:8px;font-weight:bold;color:#555">Company</td><td style="padding:8px">${company}</td></tr>` : ""}
+        <tr><td style="padding:8px;font-weight:bold;color:#555;vertical-align:top">Message</td><td style="padding:8px;white-space:pre-wrap">${message}</td></tr>
+      </table>
+    `;
+
+    const recipients = ["info@finemountainconsulting.com", "rich@finemountainconsulting.com"];
+
+    await sgMail.send({
+      from: SENDGRID_FROM,
+      to: recipients,
+      replyTo: email,
+      subject,
+      html,
+    });
+
+    res.json({ success: true });
+  }
+);
