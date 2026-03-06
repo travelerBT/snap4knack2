@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { collection, query, where, orderBy, getDocs, writeBatch, doc } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, writeBatch, doc } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import SEO from '../../components/SEO';
@@ -48,30 +48,27 @@ export default function ClientPortal() {
       setLoading(false);
       return;
     }
-    const load = async () => {
-      // Load submissions for each plugin the client has access to
-      const results = await Promise.all(
-        clientAccess.map((pluginId) =>
-          getDocs(
-            query(
-              collection(db, 'snap_submissions'),
-              where('pluginId', '==', pluginId),
-              orderBy('createdAt', 'desc')
-            )
-          )
-        )
+
+    // One live listener per pluginId — merges into a single submissions list
+    const byPlugin = new Map<string, SnapSubmission[]>();
+    const unsubs = clientAccess.map((pluginId) => {
+      return onSnapshot(
+        query(
+          collection(db, 'snap_submissions'),
+          where('pluginId', '==', pluginId),
+          orderBy('createdAt', 'desc')
+        ),
+        (snap) => {
+          byPlugin.set(pluginId, snap.docs.map((d) => ({ id: d.id, ...d.data() } as SnapSubmission)));
+          const merged = Array.from(byPlugin.values()).flat();
+          merged.sort((a, b) => (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0));
+          setSubmissions(merged);
+          setLoading(false);
+        }
       );
-      const all = results.flatMap((s) => s.docs.map((d) => ({ id: d.id, ...d.data() } as SnapSubmission)));
-      // Sort merged by date
-      all.sort((a, b) => {
-        const at = a.createdAt?.seconds ?? 0;
-        const bt = b.createdAt?.seconds ?? 0;
-        return bt - at;
-      });
-      setSubmissions(all);
-      setLoading(false);
-    };
-    load();
+    });
+
+    return () => unsubs.forEach((u) => u());
   }, [clientAccess]);
 
   const filtered = useMemo(() => {

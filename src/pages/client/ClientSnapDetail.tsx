@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
-  doc, getDoc, updateDoc, collection, getDocs, addDoc, serverTimestamp,
+  doc, collection, addDoc, serverTimestamp, onSnapshot, query, orderBy, updateDoc,
 } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -29,14 +29,23 @@ export default function ClientSnapDetail() {
 
   useEffect(() => {
     if (!id) return;
-    Promise.all([
-      getDoc(doc(db, 'snap_submissions', id)),
-      getDocs(collection(db, 'snap_submissions', id, 'comments')),
-    ]).then(([subDoc, commSnap]) => {
-      if (subDoc.exists()) setSub({ id: subDoc.id, ...subDoc.data() } as SnapSubmission);
-      setComments(commSnap.docs.map((d) => ({ id: d.id, ...d.data() } as SnapComment)));
+
+    // Live listener on the submission doc
+    const unsubDoc = onSnapshot(doc(db, 'snap_submissions', id), (snap) => {
+      if (snap.exists()) setSub({ id: snap.id, ...snap.data() } as SnapSubmission);
       setLoading(false);
     });
+
+    // Live listener on comments
+    const unsubComments = onSnapshot(
+      query(collection(db, 'snap_submissions', id, 'comments'), orderBy('createdAt', 'asc')),
+      (snap) => setComments(snap.docs.map((d) => ({ id: d.id, ...d.data() } as SnapComment)))
+    );
+
+    return () => {
+      unsubDoc();
+      unsubComments();
+    };
   }, [id]);
 
   const drawAnnotations = () => {
@@ -52,16 +61,50 @@ export default function ClientSnapDetail() {
       ctx.strokeStyle = shape.color;
       ctx.lineWidth = 2;
       ctx.globalAlpha = 0.85;
-      if (shape.tool === 'pen' && shape.points?.length) {
-        ctx.beginPath();
-        ctx.moveTo(shape.points[0].x, shape.points[0].y);
-        shape.points.slice(1).forEach((p) => ctx.lineTo(p.x, p.y));
-        ctx.stroke();
-      } else if (shape.tool === 'rect' && shape.x !== undefined) {
-        ctx.strokeRect(shape.x, shape.y ?? 0, shape.width ?? 0, shape.height ?? 0);
-      } else if (shape.tool === 'blur' && shape.x !== undefined) {
-        ctx.fillStyle = 'rgba(0,0,0,0.5)';
-        ctx.fillRect(shape.x, shape.y ?? 0, shape.width ?? 0, shape.height ?? 0);
+      switch (shape.tool) {
+        case 'pen':
+          if (shape.points && shape.points.length > 1) {
+            ctx.beginPath();
+            ctx.moveTo(shape.points[0].x, shape.points[0].y);
+            shape.points.slice(1).forEach((p) => ctx.lineTo(p.x, p.y));
+            ctx.stroke();
+          }
+          break;
+        case 'rect':
+          if (shape.x !== undefined) {
+            ctx.strokeRect(shape.x, shape.y ?? 0, shape.width ?? 0, shape.height ?? 0);
+          }
+          break;
+        case 'arrow':
+          if (shape.x !== undefined && shape.x2 !== undefined) {
+            const x1 = shape.x, y1 = shape.y ?? 0, x2 = shape.x2, y2 = shape.y2 ?? 0;
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.stroke();
+            const angle = Math.atan2(y2 - y1, x2 - x1);
+            const len = 12;
+            ctx.beginPath();
+            ctx.moveTo(x2, y2);
+            ctx.lineTo(x2 - len * Math.cos(angle - 0.4), y2 - len * Math.sin(angle - 0.4));
+            ctx.moveTo(x2, y2);
+            ctx.lineTo(x2 - len * Math.cos(angle + 0.4), y2 - len * Math.sin(angle + 0.4));
+            ctx.stroke();
+          }
+          break;
+        case 'text':
+          if (shape.x !== undefined && shape.text) {
+            ctx.fillStyle = shape.color;
+            ctx.font = '14px sans-serif';
+            ctx.fillText(shape.text, shape.x, shape.y ?? 0);
+          }
+          break;
+        case 'blur':
+          if (shape.x !== undefined) {
+            ctx.fillStyle = 'rgba(0,0,0,0.5)';
+            ctx.fillRect(shape.x, shape.y ?? 0, shape.width ?? 0, shape.height ?? 0);
+          }
+          break;
       }
     });
   };
@@ -76,8 +119,8 @@ export default function ClientSnapDetail() {
       text: commentText.trim(),
       createdAt: serverTimestamp() as SnapComment['createdAt'],
     };
-    const ref = await addDoc(collection(db, 'snap_submissions', id, 'comments'), c);
-    setComments((prev) => [...prev, { id: ref.id, ...c }]);
+    await addDoc(collection(db, 'snap_submissions', id, 'comments'), c);
+    // onSnapshot listener will update comments automatically
     setCommentText('');
     setPosting(false);
   };
@@ -85,7 +128,7 @@ export default function ClientSnapDetail() {
   const markResolved = async () => {
     if (!id || !sub) return;
     await updateDoc(doc(db, 'snap_submissions', id), { status: 'resolved' });
-    setSub({ ...sub, status: 'resolved' });
+    // onSnapshot will reflect the change automatically
   };
 
   if (loading) return <div className="space-y-3 animate-pulse">{[...Array(3)].map((_, i) => <div key={i} className="h-16 bg-gray-200 rounded-lg" />)}</div>;
