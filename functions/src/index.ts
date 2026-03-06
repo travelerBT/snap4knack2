@@ -311,7 +311,7 @@ export const submitSnap = functions.https.onRequest(
       formData: body.formData || {},
       context: body.context || {},
       priority: body.priority || "medium",
-      status: "open",
+      status: "new",
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     };
 

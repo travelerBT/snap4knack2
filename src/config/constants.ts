@@ -44,10 +44,11 @@ export const STATUS_OPTIONS = [
 ] as const;
 
 export const CAPTURE_TYPE_LABELS: Record<string, string> = {
-  screenshot: 'Full Screenshot',
-  area: 'Selected Area',
+  full_viewport: 'Full Screenshot',
+  select_area: 'Selected Area',
   element_pin: 'Pinned Element',
-  recording: 'Screen Recording',
+  screen_recording: 'Screen Recording',
+  console_errors: 'Console Errors',
 };
 
 // ─── Plugin Defaults ─────────────────────────────────────────────────────────
