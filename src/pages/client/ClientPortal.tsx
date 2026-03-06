@@ -33,7 +33,7 @@ export default function ClientPortal() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
-  const [view, setView] = useState<'list' | 'kanban'>('list');
+  const [view, setView] = useState<'list' | 'kanban'>('kanban');
 
   useEffect(() => {
     if (!clientAccess || clientAccess.length === 0) {
