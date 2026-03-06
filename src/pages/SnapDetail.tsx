@@ -30,6 +30,7 @@ export default function SnapDetail() {
   const [loading, setLoading] = useState(true);
   const [commentText, setCommentText] = useState('');
   const [postingComment, setPostingComment] = useState(false);
+  const [notifyComment, setNotifyComment] = useState(false);
   const [showConsole, setShowConsole] = useState(false);
 
   useEffect(() => {
@@ -138,11 +139,13 @@ export default function SnapDetail() {
       authorId: tenantId,
       authorName: user?.displayName || user?.email || 'Team',
       text: commentText.trim(),
+      notify: notifyComment,
       createdAt: serverTimestamp() as SnapComment['createdAt'],
     };
     await addDoc(collection(db, 'snap_submissions', id, 'comments'), c);
     // No manual setComments — the onSnapshot listener will pick up the new comment
     setCommentText('');
+    setNotifyComment(false);
     setPostingComment(false);
   };
 
@@ -307,21 +310,32 @@ export default function SnapDetail() {
                 <p className="text-sm text-gray-400 text-center py-4">No comments yet.</p>
               )}
             </div>
-            <div className="flex gap-2">
-              <input
-                value={commentText}
-                onChange={(e) => setCommentText(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && postComment()}
-                placeholder="Add a comment…"
-                className="flex-1 rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-              />
-              <button
-                onClick={postComment}
-                disabled={!commentText.trim() || postingComment}
-                className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg disabled:opacity-50"
-              >
-                {postingComment ? '…' : 'Post'}
-              </button>
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                <input
+                  value={commentText}
+                  onChange={(e) => setCommentText(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && postComment()}
+                  placeholder="Add a comment…"
+                  className="flex-1 rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                />
+                <button
+                  onClick={postComment}
+                  disabled={!commentText.trim() || postingComment}
+                  className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg disabled:opacity-50"
+                >
+                  {postingComment ? '…' : 'Post'}
+                </button>
+              </div>
+              <label className="flex items-center gap-2 text-xs text-gray-500 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={notifyComment}
+                  onChange={(e) => setNotifyComment(e.target.checked)}
+                  className="rounded border-gray-300 text-blue-600"
+                />
+                Notify all commenters
+              </label>
             </div>
           </div>
         </div>

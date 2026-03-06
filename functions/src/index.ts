@@ -3,7 +3,7 @@ import * as admin from "firebase-admin";
 import { SecretManagerServiceClient } from "@google-cloud/secret-manager";
 import sgMail from "@sendgrid/mail";
 import axios from "axios";
-import { snapNotificationEmail, clientInvitationEmail, commentNotificationEmail } from "./emailTemplates";
+import { snapNotificationEmail, criticalSnapEmail, clientInvitationEmail, commentNotificationEmail } from "./emailTemplates";
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -409,7 +409,11 @@ export const onSnapCreated = functions.firestore.onDocumentCreated(
 
     const notifyEmails = (pluginDoc.data()?.snapSettings?.notifyEmails as string[]) || [];
     const tenantData = tenantDoc.data();
-    if (!tenantData?.notifyOnSnap) return;
+    const priority = snap.priority as string | undefined;
+    const isCritical = priority === "critical";
+
+    // If not critical and notifyOnSnap is off, skip.
+    if (!isCritical && !tenantData?.notifyOnSnap) return;
     if (notifyEmails.length === 0) return;
 
     const key = await getSendGridKey();
@@ -418,21 +422,40 @@ export const onSnapCreated = functions.firestore.onDocumentCreated(
 
     const category = ((snap.formData as Record<string, unknown>)?.category as string) || "Snap";
     const pageUrl = ((snap.context as Record<string, unknown>)?.pageUrl as string) || "";
+    const snapDashboardUrl = `${APP_DOMAIN}/snap-feed/${event.params.submissionId}`;
+    const pluginName = he(pluginDoc.data()?.name || "Plugin");
 
-    await Promise.all(
-      notifyEmails.map((email) =>
-        sgMail.send({
-          from: SENDGRID_FROM,
-          ...snapNotificationEmail({
-            recipientEmail: email,
-            pluginName: pluginDoc.data()?.name || "Plugin",
-            category,
-            pageUrl,
-            dashboardUrl: `${APP_DOMAIN}/snap-feed/${event.params.submissionId}`,
-          }),
-        })
-      )
-    );
+    if (isCritical) {
+      await Promise.all(
+        notifyEmails.map((email) =>
+          sgMail.send({
+            from: SENDGRID_FROM,
+            ...criticalSnapEmail({
+              recipientEmail: email,
+              pluginName,
+              category: he(category),
+              pageUrl: he(pageUrl),
+              dashboardUrl: snapDashboardUrl,
+            }),
+          })
+        )
+      );
+    } else {
+      await Promise.all(
+        notifyEmails.map((email) =>
+          sgMail.send({
+            from: SENDGRID_FROM,
+            ...snapNotificationEmail({
+              recipientEmail: email,
+              pluginName,
+              category: he(category),
+              pageUrl: he(pageUrl),
+              dashboardUrl: snapDashboardUrl,
+            }),
+          })
+        )
+      );
+    }
   }
 );
 
@@ -444,29 +467,72 @@ export const onCommentCreated = functions.firestore.onDocumentCreated(
     const comment = event.data?.data() as Record<string, unknown> | undefined;
     if (!comment) return;
 
-    const submissionDoc = await db.collection("snap_submissions").doc(event.params.submissionId).get();
+    // Only fan-out when the commenter explicitly checked "Notify".
+    if (comment.notify !== true) return;
+
+    const submissionId = event.params.submissionId;
+    const submissionDoc = await db.collection("snap_submissions").doc(submissionId).get();
     if (!submissionDoc.exists) return;
     const submission = submissionDoc.data()!;
     const tenantId = submission.tenantId as string;
+    const snapNumber = submission.snapNumber as number | undefined;
+    const category = ((submission.formData as Record<string, unknown>)?.category as string) || "Snap";
 
-    const userDoc = await db.collection("users").doc(tenantId).get();
-    if (!userDoc.data()?.notifyOnComment) return;
-    const tenantEmail = userDoc.data()?.email as string;
-    if (!tenantEmail) return;
+    const authorUid = (comment.authorUid || comment.authorId) as string | undefined;
+
+    // Collect all prior commenters on this snap (excluding the current author).
+    const existingCommentsSnap = await db
+      .collection("snap_submissions")
+      .doc(submissionId)
+      .collection("comments")
+      .get();
+
+    const commenterUids = new Set<string>();
+    for (const doc of existingCommentsSnap.docs) {
+      if (doc.id === event.params.commentId) continue; // skip the just-created comment
+      const d = doc.data();
+      const uid = (d.authorUid || d.authorId) as string | undefined;
+      if (uid && uid !== authorUid) commenterUids.add(uid);
+    }
+    // Always include the tenant owner (unless they are the author).
+    if (tenantId && tenantId !== authorUid) commenterUids.add(tenantId);
+
+    if (commenterUids.size === 0) return;
 
     const key = await getSendGridKey();
     if (!key) return;
     sgMail.setApiKey(key);
 
-    await sgMail.send({
-      from: SENDGRID_FROM,
-      ...commentNotificationEmail({
-        recipientEmail: tenantEmail,
-        authorName: (comment.authorName as string) || "Someone",
-        commentText: (comment.text as string) || "",
-        dashboardUrl: `${APP_DOMAIN}/snap-feed/${event.params.submissionId}`,
-      }),
-    });
+    const authorName = he((comment.authorName as string) || "Someone");
+    const commentText = he((comment.text as string) || "");
+
+    await Promise.all(
+      Array.from(commenterUids).map(async (uid) => {
+        const userDoc = await db.collection("users").doc(uid).get();
+        if (!userDoc.exists) return;
+        const userData = userDoc.data()!;
+        if (!userData.notifyOnComment) return;
+        const recipientEmail = userData.email as string;
+        if (!recipientEmail) return;
+
+        // Role-aware deep-link: tenant gets /snap-feed/, clients get /client-portal/snap/
+        const snapUrl = uid === tenantId
+          ? `${APP_DOMAIN}/snap-feed/${submissionId}`
+          : `${APP_DOMAIN}/client-portal/snap/${submissionId}`;
+
+        await sgMail.send({
+          from: SENDGRID_FROM,
+          ...commentNotificationEmail({
+            recipientEmail,
+            authorName,
+            commentText,
+            snapNumber,
+            snapCategory: he(category),
+            dashboardUrl: snapUrl,
+          }),
+        });
+      })
+    );
   }
 );
 

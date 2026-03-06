@@ -189,6 +189,7 @@ export interface SnapComment {
   authorRole?: UserRole;
   text: string;
   createdAt: Timestamp;
+  notify?: boolean;      // when true, fan-out email to all commenters
 }
 
 // ─── Client Invitations ──────────────────────────────────────────────────────
