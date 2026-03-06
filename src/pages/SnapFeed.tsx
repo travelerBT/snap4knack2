@@ -235,7 +235,7 @@ export default function SnapFeed() {
               onChange={(e) => setPluginFilter(e.target.value)}
               className="pl-9 block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
             >
-              <option value="">All plugins</option>
+              <option value="">All Connections</option>
               {plugins.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </div>
