@@ -113,6 +113,10 @@
 
   function req(method, url, data, token) {
     return new Promise(function (resolve, reject) {
+      // Only allow HTTPS to prevent token theft on mixed-content pages (M-07)
+      if (url.indexOf('https://') !== 0) {
+        return reject(new Error('Only HTTPS requests are permitted'));
+      }
       var xhr = new XMLHttpRequest();
       xhr.open(method, url);
       xhr.setRequestHeader('Content-Type', 'application/json');

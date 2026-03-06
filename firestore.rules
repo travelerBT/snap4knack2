@@ -73,7 +73,15 @@ service cloud.firestore {
         clientHasPluginAccess(resource.data.pluginId) ||
         (request.auth.token.get('role', '') == 'widget' && resource.data.knackUserId == request.auth.token.get('knackUserId', ''))
       );
-      allow create: if isAuthenticated();
+      // Create: tenant must own the submission, or widget token claims must match (H-03)
+      allow create: if isAuthenticated() && (
+        request.resource.data.tenantId == request.auth.uid ||
+        (
+          request.auth.token.get('role', '') == 'widget' &&
+          request.resource.data.tenantId == request.auth.token.get('snap_tenantId', '') &&
+          request.resource.data.pluginId  == request.auth.token.get('snap_pluginId',  '')
+        )
+      );
       allow update: if isAuthenticated() && (
         isAdmin() ||
         resource.data.tenantId == request.auth.uid ||
@@ -87,20 +95,31 @@ service cloud.firestore {
           get(/databases/$(database)/documents/snap_submissions/$(submissionId)).data.tenantId == request.auth.uid ||
           clientHasPluginAccess(get(/databases/$(database)/documents/snap_submissions/$(submissionId)).data.pluginId)
         );
-        allow create: if isAuthenticated();
+        // Create: commenter must have read access to the parent submission (L-03)
+        allow create: if isAuthenticated() && (
+          isAdmin() ||
+          get(/databases/$(database)/documents/snap_submissions/$(submissionId)).data.tenantId == request.auth.uid ||
+          clientHasPluginAccess(get(/databases/$(database)/documents/snap_submissions/$(submissionId)).data.pluginId)
+        );
         allow update, delete: if isAuthenticated() && request.auth.uid == resource.data.authorUid;
       }
     }
 
     // Client invitations
     match /client_invitations/{inviteId} {
-      allow read: if isAdmin() || resource.data.tenantId == request.auth.uid;
-      allow write: if isAdmin() || resource.data.tenantId == request.auth.uid;
+      // create: server-side only (Cloud Function). Direct client creates are denied (M-05).
+      allow create: if isAdmin();
+      allow read, update, delete: if isAdmin() || resource.data.tenantId == request.auth.uid;
     }
 
     // Admin API keys
     match /admin_api_keys/{apiKeyId} {
       allow read, write: if isAdmin();
+    }
+
+    // Snap counters — written exclusively by the submitSnap Cloud Function (pen test 7.2)
+    match /snap_counters/{tenantId} {
+      allow read, write: if false;
     }
   }
 }

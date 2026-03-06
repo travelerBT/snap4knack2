@@ -17,6 +17,16 @@ const SENDGRID_FROM = "info@finemountainconsulting.com";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
+/** HTML-encode a string before embedding it in an email HTML body (C-01) */
+function he(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#x27;");
+}
+
 async function getSendGridKey(): Promise<string> {
   try {
     const [version] = await secretClient.accessSecretVersion({
@@ -47,6 +57,10 @@ export const storeKnackApiKey = functions.https.onCall(
     }
     if (request.auth.uid !== tenantId) {
       throw new functions.https.HttpsError("permission-denied", "Not authorized.");
+    }
+    // Validate connectionId format to prevent Secret Manager path injection (pen test 4.5)
+    if (!/^[a-zA-Z0-9_-]+$/.test(connectionId)) {
+      throw new functions.https.HttpsError("invalid-argument", "Invalid connectionId format.");
     }
 
     const secretId = `knack-${tenantId}-${connectionId}`;
@@ -82,6 +96,11 @@ export const fetchKnackRoles = functions.https.onCall(
     const { appId, secretName } = request.data as { appId: string; secretName: string };
     if (!appId || !secretName) {
       throw new functions.https.HttpsError("invalid-argument", "Missing appId or secretName.");
+    }
+    // Verify the caller owns the secret — prevents cross-tenant API key theft (pen test 4.4 / new IDOR finding)
+    const expectedSecretPrefix = `projects/${PROJECT_ID}/secrets/knack-${request.auth.uid}-`;
+    if (!secretName.startsWith(expectedSecretPrefix)) {
+      throw new functions.https.HttpsError("permission-denied", "Secret not authorized for this account.");
     }
 
     const apiKey = await getKnackApiKey(secretName);
@@ -317,6 +336,30 @@ export const submitSnap = functions.https.onRequest(
 
     const body = req.body as Record<string, unknown>;
 
+    // Sanitise/truncate caller-supplied fields to prevent oversized Firestore documents (M-03)
+    const consoleErrors = Array.isArray(body.consoleErrors)
+      ? (body.consoleErrors as unknown[]).slice(0, 100)
+      : [];
+    const annotationDataRaw = body.annotationData;
+    const annotationData = annotationDataRaw != null &&
+      JSON.stringify(annotationDataRaw).length <= 50_000
+      ? annotationDataRaw
+      : null;
+    const formData = body.formData && typeof body.formData === "object"
+      ? Object.fromEntries(
+          Object.entries(body.formData as Record<string, unknown>).slice(0, 50)
+        )
+      : {};
+    const context = body.context && typeof body.context === "object"
+      ? Object.fromEntries(
+          Object.entries(body.context as Record<string, unknown>).slice(0, 20)
+        )
+      : {};
+    const ALLOWED_PRIORITIES = ["low", "medium", "high", "critical"];
+    const priority = ALLOWED_PRIORITIES.includes(body.priority as string)
+      ? (body.priority as string)
+      : "medium";
+
     const submission = {
       tenantId,
       pluginId,
@@ -325,11 +368,11 @@ export const submitSnap = functions.https.onRequest(
       type: body.type || "full",
       screenshotUrl: body.screenshotUrl || null,
       recordingUrl: body.recordingUrl || null,
-      annotationData: body.annotationData || null,
-      consoleErrors: body.consoleErrors || [],
-      formData: body.formData || {},
-      context: body.context || {},
-      priority: body.priority || "medium",
+      annotationData,
+      consoleErrors,
+      formData,
+      context,
+      priority,
       status: "new",
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     };
@@ -445,11 +488,15 @@ export const revokeClientAccess = functions.https.onCall(
 
     await invDoc.ref.update({ status: "revoked" });
 
-    // Remove plugin access from client user doc
+    // Remove plugin access from client user doc and revoke Firebase refresh tokens
+    // so existing ID tokens cannot be renewed after revocation (pen test 5.1)
     if (inv.acceptedBy) {
-      await db.collection("users").doc(inv.acceptedBy).update({
-        clientAccess: admin.firestore.FieldValue.arrayRemove(...inv.pluginIds),
-      });
+      await Promise.all([
+        db.collection("users").doc(inv.acceptedBy).update({
+          clientAccess: admin.firestore.FieldValue.arrayRemove(...inv.pluginIds),
+        }),
+        auth.revokeRefreshTokens(inv.acceptedBy),
+      ]);
     }
 
     return { success: true };
@@ -481,14 +528,20 @@ export const contactForm = functions.https.onRequest(
 
     sgMail.setApiKey(key);
 
-    const subject = `Snap4Knack Contact Form — ${name}`;
+    // HTML-encode all user-supplied values before embedding in email body (C-01)
+    const safeName    = he(name!.trim());
+    const safeEmail   = he(email!.trim());
+    const safeCompany = company ? he(company.trim()) : "";
+    const safeMessage = he(message!.trim());
+
+    const subject = `Snap4Knack Contact Form — ${safeName}`;
     const html = `
       <h2>New Contact Form Submission</h2>
       <table style="border-collapse:collapse;width:100%;max-width:600px">
-        <tr><td style="padding:8px;font-weight:bold;color:#555">Name</td><td style="padding:8px">${name}</td></tr>
-        <tr><td style="padding:8px;font-weight:bold;color:#555">Email</td><td style="padding:8px"><a href="mailto:${email}">${email}</a></td></tr>
-        ${company ? `<tr><td style="padding:8px;font-weight:bold;color:#555">Company</td><td style="padding:8px">${company}</td></tr>` : ""}
-        <tr><td style="padding:8px;font-weight:bold;color:#555;vertical-align:top">Message</td><td style="padding:8px;white-space:pre-wrap">${message}</td></tr>
+        <tr><td style="padding:8px;font-weight:bold;color:#555">Name</td><td style="padding:8px">${safeName}</td></tr>
+        <tr><td style="padding:8px;font-weight:bold;color:#555">Email</td><td style="padding:8px"><a href="mailto:${safeEmail}">${safeEmail}</a></td></tr>
+        ${safeCompany ? `<tr><td style="padding:8px;font-weight:bold;color:#555">Company</td><td style="padding:8px">${safeCompany}</td></tr>` : ""}
+        <tr><td style="padding:8px;font-weight:bold;color:#555;vertical-align:top">Message</td><td style="padding:8px;white-space:pre-wrap">${safeMessage}</td></tr>
       </table>
     `;
 
@@ -497,7 +550,7 @@ export const contactForm = functions.https.onRequest(
     await sgMail.send({
       from: SENDGRID_FROM,
       to: recipients,
-      replyTo: email,
+      replyTo: email!.trim(),
       subject,
       html,
     });
