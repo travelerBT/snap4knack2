@@ -249,8 +249,8 @@ export const issueWidgetToken = functions.https.onRequest(
     const widgetUid = `widget-${tenantId}-${knackUserId}`;
     const token = await auth.createCustomToken(widgetUid, {
       role: "widget",
-      tenantId,
-      pluginId,
+      snap_tenantId: tenantId,
+      snap_pluginId: pluginId,
       knackUserId,
       knackUserRole,
     });
@@ -281,7 +281,12 @@ export const submitSnap = functions.https.onRequest(
       res.status(401).json({ error: "Invalid auth token" }); return;
     }
 
-    const { tenantId, pluginId, knackUserId, knackUserRole } = decoded as Record<string, string>;
+    const snap_tenantId = (decoded as Record<string, string>).snap_tenantId;
+    const snap_pluginId = (decoded as Record<string, string>).snap_pluginId;
+    const knackUserId = (decoded as Record<string, string>).knackUserId;
+    const knackUserRole = (decoded as Record<string, string>).knackUserRole;
+    const tenantId = snap_tenantId;
+    const pluginId = snap_pluginId;
     if (!tenantId || !pluginId) { res.status(400).json({ error: "Token missing claims" }); return; }
 
     const body = req.body as Record<string, unknown>;

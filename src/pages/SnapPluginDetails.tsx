@@ -114,6 +114,18 @@ export default function SnapPluginDetails() {
     }
   };
 
+  const handleRevoke = async (invId: string) => {
+    if (!window.confirm('Revoke this invitation? The client will immediately lose portal access.')) return;
+    try {
+      const revokeClientAccess = httpsCallable(functions, 'revokeClientAccess');
+      await revokeClientAccess({ invitationId: invId });
+      setInvitations((prev) => prev.map((inv) => inv.id === invId ? { ...inv, status: 'revoked' as const } : inv));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to revoke invitation.';
+      setModal({ open: true, type: 'error', title: 'Revoke failed', message: msg });
+    }
+  };
+
   const copyEmbed = () => {
     if (!plugin || !connection) return;
     const code = `(function(){var s=document.createElement('script');\ns.src='${WIDGET_BASE_URL}/widget/loader.js';\ns.onload=function(){Snap4KnackLoader.init({\n  pluginId:'${plugin.id}',tenantId:'${tenantId}',appId:'${connection.appId}',\n  primaryColor:'${plugin.customBranding?.primaryColor ?? '#3b82f6'}',position:'${plugin.customBranding?.position ?? 'bottom-right'}'\n})};document.head.appendChild(s)})();`;
@@ -265,7 +277,7 @@ s.onload=function(){Snap4KnackLoader.init({
           setInviteEmail={setInviteEmail}
           onInvite={handleInvite}
           inviting={inviting}
-          onRevoke={() => {}}
+          onRevoke={handleRevoke}
         />
       )}
 

@@ -25,8 +25,8 @@ service cloud.firestore {
     function isWidget(tenantId, pluginId) {
       return isAuthenticated() &&
         request.auth.token.get('role', '') == 'widget' &&
-        request.auth.token.get('tenantId', '') == tenantId &&
-        request.auth.token.get('pluginId', '') == pluginId;
+        request.auth.token.get('snap_tenantId', '') == tenantId &&
+        request.auth.token.get('snap_pluginId', '') == pluginId;
     }
 
     function clientHasPluginAccess(pluginId) {
