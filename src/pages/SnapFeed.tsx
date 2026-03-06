@@ -359,6 +359,9 @@ function SubmissionRow({ sub, pluginName }: { sub: SnapSubmission; pluginName: s
       {/* Info */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
+          {sub.snapNumber != null && (
+            <span className="text-xs font-bold text-gray-400 font-mono">#{sub.snapNumber}</span>
+          )}
           <span className="text-sm font-medium text-gray-900 truncate">
             {sub.formData?.category ?? 'Snap'}
           </span>

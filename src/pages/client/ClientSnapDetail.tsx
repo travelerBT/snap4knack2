@@ -215,6 +215,12 @@ export default function ClientSnapDetail() {
           <div className="bg-white shadow rounded-lg p-5">
             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Details</h3>
             <dl className="space-y-2 text-sm">
+              {sub.snapNumber != null && (
+                <div>
+                  <dt className="text-gray-400 text-xs">Snap #</dt>
+                  <dd className="font-bold font-mono text-gray-900">#{sub.snapNumber}</dd>
+                </div>
+              )}
               <div>
                 <dt className="text-gray-400 text-xs">Type</dt>
                 <dd className="font-medium">{CAPTURE_TYPE_LABELS[sub.type]}</dd>

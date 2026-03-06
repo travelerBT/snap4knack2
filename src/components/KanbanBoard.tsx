@@ -136,7 +136,12 @@ function SnapCard({
       )}
 
       <div className="flex items-center justify-between gap-1 mb-1">
-        <span className="text-xs font-semibold text-gray-800 truncate">{sub.formData?.category ?? 'Snap'}</span>
+        <div className="flex items-center gap-1.5 min-w-0">
+          {sub.snapNumber != null && (
+            <span className="text-[10px] font-bold text-gray-400 font-mono flex-shrink-0">#{sub.snapNumber}</span>
+          )}
+          <span className="text-xs font-semibold text-gray-800 truncate">{sub.formData?.category ?? 'Snap'}</span>
+        </div>
         <span className="flex items-center gap-0.5 text-xs text-gray-400 flex-shrink-0">
           {CAPTURE_ICONS[sub.type]}
           <span className="hidden sm:inline">{CAPTURE_TYPE_LABELS[sub.type]}</span>

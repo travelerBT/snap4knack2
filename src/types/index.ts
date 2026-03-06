@@ -172,6 +172,7 @@ export interface SnapSubmission {
   context: SubmissionContext;
   status: SubmissionStatus;
   priority?: 'low' | 'medium' | 'high' | 'critical';
+  snapNumber?: number;
   sortOrder?: number;
   createdAt: Timestamp;
   resolvedAt?: Timestamp;

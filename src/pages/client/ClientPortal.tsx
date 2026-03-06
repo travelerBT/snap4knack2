@@ -178,8 +178,9 @@ export default function ClientPortal() {
                   </div>
                   {/* Info */}
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-gray-900">{sub.formData?.category ?? 'Snap'}</span>
+                    <div className="flex items-center gap-2">                    {sub.snapNumber != null && (
+                      <span className="text-xs font-bold text-gray-400 font-mono">#{sub.snapNumber}</span>
+                    )}                      <span className="text-sm font-medium text-gray-900">{sub.formData?.category ?? 'Snap'}</span>
                       <span className="inline-flex items-center gap-1 text-xs text-gray-500">
                         {CAPTURE_ICONS[sub.type]}
                         {CAPTURE_TYPE_LABELS[sub.type]}

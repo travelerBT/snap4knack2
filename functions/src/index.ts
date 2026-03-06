@@ -334,8 +334,17 @@ export const submitSnap = functions.https.onRequest(
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     };
 
-    const docRef = await db.collection("snap_submissions").add(submission);
-    res.json({ id: docRef.id });
+    // Assign a sequential snap number per tenant using a transaction
+    const newDocRef = db.collection("snap_submissions").doc();
+    await db.runTransaction(async (tx) => {
+      const counterRef = db.collection("snap_counters").doc(tenantId);
+      const counterDoc = await tx.get(counterRef);
+      const snapNumber = (counterDoc.exists ? (counterDoc.data()?.count ?? 0) : 0) + 1;
+      tx.set(counterRef, { count: snapNumber }, { merge: true });
+      tx.set(newDocRef, { ...submission, snapNumber });
+    });
+
+    res.json({ id: newDocRef.id });
   }
 );
 

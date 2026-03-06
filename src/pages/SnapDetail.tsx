@@ -380,6 +380,12 @@ export default function SnapDetail() {
           <div className="bg-white shadow rounded-lg p-5">
             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Submission Info</h3>
             <dl className="space-y-2 text-sm">
+              {sub.snapNumber != null && (
+                <div>
+                  <dt className="text-gray-400 text-xs">Snap #</dt>
+                  <dd className="font-bold font-mono text-gray-900">#{sub.snapNumber}</dd>
+                </div>
+              )}
               <div>
                 <dt className="text-gray-400 text-xs">Capture Type</dt>
                 <dd className="font-medium text-gray-900">{CAPTURE_TYPE_LABELS[sub.type]}</dd>
