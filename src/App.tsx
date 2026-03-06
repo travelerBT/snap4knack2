@@ -8,6 +8,7 @@ import ClientLayout from './components/ClientLayout';
 import Home from './pages/Home';
 import Login from './pages/Login';
 import LegalPage from './pages/LegalPage';
+import AcceptInvite from './pages/AcceptInvite';
 
 // Tenant / Admin pages
 import Dashboard from './pages/Dashboard';
@@ -60,6 +61,7 @@ function AppRoutes() {
       <Route path="/home" element={<Home />} />
       <Route path="/login" element={<Login />} />
       <Route path="/legal/:page" element={<LegalPage />} />
+      <Route path="/accept-invite" element={<AcceptInvite />} />
 
       {/* Client portal — ClientLayout */}
       <Route

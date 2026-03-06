@@ -1,7 +1,7 @@
 import * as functions from "firebase-functions/v2";
 import * as admin from "firebase-admin";
 import { SecretManagerServiceClient } from "@google-cloud/secret-manager";
-import * as sgMail from "@sendgrid/mail";
+import sgMail from "@sendgrid/mail";
 import axios from "axios";
 import { snapNotificationEmail, clientInvitationEmail, commentNotificationEmail } from "./emailTemplates";
 
@@ -191,6 +191,12 @@ export const acceptInvitation = functions.https.onCall(
     if (inv.status !== "pending") throw new functions.https.HttpsError("already-exists", "Invitation already used.");
     if (inv.expiresAt.toDate() < new Date()) throw new functions.https.HttpsError("deadline-exceeded", "Invitation expired.");
 
+    // Verify the authenticated user's email matches the invitation
+    const userEmail = request.auth.token.email || "";
+    if (inv.email.toLowerCase() !== userEmail.toLowerCase()) {
+      throw new functions.https.HttpsError("permission-denied", "Your email does not match this invitation.");
+    }
+
     const uid = request.auth.uid;
 
     // Grant client access
@@ -201,6 +207,7 @@ export const acceptInvitation = functions.https.onCall(
     await userRef.set(
       {
         role: "client",
+        roles: ["client"],
         tenantId: inv.tenantId,
         clientAccess: admin.firestore.FieldValue.arrayUnion(...inv.pluginIds),
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
