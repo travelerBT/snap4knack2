@@ -34,7 +34,6 @@
   }
 
   function init(config) {
-    console.log('[Snap4Knack] loader init() called', config);
     if (!config || !config.pluginId || !config.tenantId || !config.appId) {
       console.warn('[Snap4Knack] init() requires pluginId, tenantId, and appId');
       return;
@@ -47,10 +46,8 @@
       return;
     }
 
-    console.log('[Snap4Knack] loading bundle:', WIDGET_BUNDLE);
     loadScript(WIDGET_BUNDLE, function () {
       _loaded = true;
-      console.log('[Snap4Knack] bundle loaded, Snap4Knack on window:', !!global.Snap4Knack);
       if (global.Snap4Knack) {
         global.Snap4Knack.mount(_config);
       } else {

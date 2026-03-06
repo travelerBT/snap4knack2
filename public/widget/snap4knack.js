@@ -5,8 +5,7 @@
  */
 ;(function (global) {
   'use strict';
-  console.log('[Snap4Knack] snap4knack.js IIFE running');
-  if (global.Snap4Knack) { console.log('[Snap4Knack] already loaded, returning'); return; }
+  if (global.Snap4Knack) { return; }
 
   // ── Constants ──────────────────────────────────────────────────────────────
 
@@ -94,9 +93,6 @@
       if (state.consoleErrors.length > 100) state.consoleErrors.shift();
     } catch (e) { /* ignore */ }
   }, true); // capture phase so it fires before any other handlers
-
-  // Signal that capture is live (appears in Console Output so user can confirm)
-  console.info('[Snap4Knack] console capture active');
 
   // ── Utils ──────────────────────────────────────────────────────────────────
 
@@ -1238,7 +1234,6 @@
       mounted = true;
       var roles = getRoles(user);
       var knackRole = roles.length ? roles[0] : 'authenticated';
-      console.log('[Snap4Knack] User found. id:', user.id, 'role:', knackRole);
       authenticate(user, knackRole);
     }
 
