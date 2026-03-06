@@ -128,6 +128,30 @@
     });
   }
 
+  function fetchPluginBranding(pluginId, tenantId, idToken) {
+    var url = 'https://firestore.googleapis.com/v1/projects/' + FIREBASE_PROJECT +
+      '/databases/(default)/documents/tenants/' + tenantId + '/snapPlugins/' + pluginId;
+    return req('GET', url, null, idToken).then(function (doc) {
+      if (!doc || !doc.fields) return;
+      var brandingField = doc.fields.customBranding;
+      if (brandingField && brandingField.mapValue && brandingField.mapValue.fields) {
+        var bf = brandingField.mapValue.fields;
+        if (bf.primaryColor && bf.primaryColor.stringValue) state.primaryColor = bf.primaryColor.stringValue;
+        if (bf.position && bf.position.stringValue) state.position = bf.position.stringValue;
+      }
+      var ssField = doc.fields.snapSettings;
+      if (ssField && ssField.mapValue && ssField.mapValue.fields) {
+        var sf = ssField.mapValue.fields;
+        if (sf.categories && sf.categories.arrayValue && sf.categories.arrayValue.values) {
+          var cats = sf.categories.arrayValue.values.map(function (v) { return v.stringValue; }).filter(Boolean);
+          if (cats.length) state.categories = cats;
+        }
+      }
+    }).catch(function (e) {
+      console.warn('[Snap4Knack] Could not fetch plugin branding:', e.message);
+    });
+  }
+
   function exchangeCustomToken(customToken) {
     var apiKey = 'AIzaSyC6J5VNpybrQUnD-pbnaQkXjcAeVAUZZKo';
     return req('POST',
@@ -138,9 +162,11 @@
 
   // ── FAB injection ──────────────────────────────────────────────────────────
 
+  var CAMERA_SVG = '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" width="24" height="24"><path stroke-linecap="round" stroke-linejoin="round" d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316ZM16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0ZM18.75 10.5h.008v.008h-.008V10.5Z" /></svg>';
+
   function injectFAB() {
     if (document.getElementById('s4k-fab')) return;
-    var fab = el('button', '', '&#128247;');
+    var fab = el('button', '', CAMERA_SVG);
     fab.id = 's4k-fab';
     var pos = state.position === 'bottom-left' ? '20px' : null;
     css(fab, {
@@ -154,7 +180,6 @@
       border: 'none',
       background: state.primaryColor,
       color: '#fff',
-      fontSize: '22px',
       cursor: 'pointer',
       boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
       zIndex: '2147483600',
@@ -237,9 +262,10 @@
       color: '#fff',
       flexShrink: '0',
     });
-    var title = el('span', '', '&#128247; Send Feedback');
+    var title = el('span', '', '');
+    title.innerHTML = '<span style="display:flex;align-items:center;gap:8px">' + CAMERA_SVG + '<span>Send Feedback</span></span>';
     css(title, { fontWeight: '600', fontSize: '15px' });
-    var closeBtn = el('button', '', '&#10005;');
+    var closeBtn = el('button', '', '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" width="16" height="16"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>');
     css(closeBtn, {
       background: 'rgba(255,255,255,0.2)',
       border: 'none',
@@ -247,7 +273,10 @@
       width: '28px', height: '28px',
       borderRadius: '50%',
       cursor: 'pointer',
-      fontSize: '14px',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexShrink: '0',
     });
     closeBtn.addEventListener('click', closeDrawer);
     header.appendChild(title);
@@ -278,28 +307,48 @@
     css(intro, { color: '#6b7280', marginBottom: '12px', marginTop: '4px' });
     wrap.appendChild(intro);
 
+    var SVG_FULL     = '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" width="20" height="20"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75V18A2.25 2.25 0 0 0 4.5 20.25h15A2.25 2.25 0 0 0 21.75 18v-2.25M2.25 8.25V6A2.25 2.25 0 0 1 4.5 3.75h15A2.25 2.25 0 0 1 21.75 6v2.25M2.25 12h19.5" /></svg>';
+    var SVG_AREA     = '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" width="20" height="20"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 3.75H6A2.25 2.25 0 0 0 3.75 6v1.5M16.5 3.75H18A2.25 2.25 0 0 1 20.25 6v1.5M20.25 16.5V18A2.25 2.25 0 0 1 18 20.25h-1.5M7.5 20.25H6A2.25 2.25 0 0 1 3.75 18v-1.5M9 12h6M12 9v6" /></svg>';
+    var SVG_PIN      = '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" width="20" height="20"><path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" /><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z" /></svg>';
+    var SVG_RECORD   = '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" width="20" height="20"><path stroke-linecap="round" stroke-linejoin="round" d="m15.75 10.5 4.72-4.72a.75.75 0 0 1 1.28.53v11.38a.75.75 0 0 1-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 0 0 2.25-2.25v-9a2.25 2.25 0 0 0-2.25-2.25h-9A2.25 2.25 0 0 0 2.25 7.5v9a2.25 2.25 0 0 0 2.25 2.25Z" /></svg>';
+    var SVG_CONSOLE  = '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" width="20" height="20"><path stroke-linecap="round" stroke-linejoin="round" d="m6.75 7.5 3 2.25-3 2.25m4.5 0h3m-9 8.25h13.5A2.25 2.25 0 0 0 21 18V6a2.25 2.25 0 0 0-2.25-2.25H5.25A2.25 2.25 0 0 0 3 6v12a2.25 2.25 0 0 0 2.25 2.25Z" /></svg>';
+
     var modes = [
-      { id: MODES.FULL, icon: '&#128444;', label: 'Full Page', desc: 'Capture the entire visible page' },
-      { id: MODES.AREA, icon: '&#9635;', label: 'Select Area', desc: 'Draw a region to capture' },
-      { id: MODES.PIN, icon: '&#128204;', label: 'Pin Element', desc: 'Click on a specific element' },
-      { id: MODES.RECORDING, icon: '&#9654;', label: 'Record Screen', desc: 'Record up to 30 seconds' },
-      { id: MODES.CONSOLE, icon: '&#128187;', label: 'Console Errors', desc: 'Attach recent JS errors (' + state.consoleErrors.length + ')' },
+      { id: MODES.FULL,      icon: SVG_FULL,    label: 'Full Page',      desc: 'Capture the entire visible page' },
+      { id: MODES.AREA,      icon: SVG_AREA,    label: 'Select Area',    desc: 'Draw a region to capture' },
+      { id: MODES.PIN,       icon: SVG_PIN,     label: 'Pin Element',    desc: 'Click on a specific element' },
+      { id: MODES.RECORDING, icon: SVG_RECORD,  label: 'Record Screen',  desc: 'Record up to 30 seconds' },
+      { id: MODES.CONSOLE,   icon: SVG_CONSOLE, label: 'Console Errors', desc: 'Attach recent JS errors (' + state.consoleErrors.length + ')' },
     ];
 
     modes.forEach(function (m) {
       var btn = el('button', '', '');
       css(btn, {
-        display: 'flex', alignItems: 'flex-start', gap: '12px',
-        width: '100%', padding: '12px', marginBottom: '8px',
-        background: '#f9fafb', border: '2px solid #e5e7eb',
-        borderRadius: '8px', cursor: 'pointer', textAlign: 'left',
-        transition: 'border-color 0.15s',
+        display: 'flex', alignItems: 'center', gap: '14px',
+        width: '100%', padding: '12px 14px', marginBottom: '8px',
+        background: '#ffffff', border: '1.5px solid #e5e7eb',
+        borderRadius: '10px', cursor: 'pointer', textAlign: 'left',
+        transition: 'border-color 0.15s, background 0.15s',
+        boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
       });
-      btn.innerHTML = '<span style="font-size:22px;flex-shrink:0">' + m.icon + '</span>' +
-        '<span><strong style="display:block;font-size:13px;color:#111">' + m.label + '</strong>' +
-        '<span style="font-size:12px;color:#6b7280">' + m.desc + '</span></span>';
-      btn.addEventListener('mouseenter', function(){ btn.style.borderColor = state.primaryColor; });
-      btn.addEventListener('mouseleave', function(){ btn.style.borderColor = '#e5e7eb'; });
+      btn.innerHTML =
+        '<span style="flex-shrink:0;width:36px;height:36px;border-radius:8px;background:#f3f4f6;display:flex;align-items:center;justify-content:center;color:#374151">' + m.icon + '</span>' +
+        '<span style="min-width:0">' +
+          '<strong style="display:block;font-size:13px;color:#111827;font-weight:600">' + m.label + '</strong>' +
+          '<span style="font-size:11.5px;color:#6b7280;display:block;margin-top:1px">' + m.desc + '</span>' +
+        '</span>';
+      btn.addEventListener('mouseenter', function(){
+        btn.style.borderColor = state.primaryColor;
+        btn.style.background = '#f8faff';
+        btn.querySelector('span').style.background = state.primaryColor + '18';
+        btn.querySelector('span').style.color = state.primaryColor;
+      });
+      btn.addEventListener('mouseleave', function(){
+        btn.style.borderColor = '#e5e7eb';
+        btn.style.background = '#ffffff';
+        btn.querySelector('span').style.background = '#f3f4f6';
+        btn.querySelector('span').style.color = '#374151';
+      });
       btn.addEventListener('click', function () { startCapture(m.id); });
       wrap.appendChild(btn);
     });
@@ -494,61 +543,80 @@
 
   // Screen recording
   function startScreenRecording() {
-    var stream = null;
-    var chunks = [];
-
-    try {
-      var canvas = document.createElement('canvas');
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-      stream = canvas.captureStream(15);
-    } catch (e) {
-      alert('Screen recording not supported in this context.');
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+      alert('Screen recording is not supported in this browser.');
       state.step = 'mode';
       showDrawer();
       renderDrawer();
       return;
     }
 
-    var mr = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8' });
-    state.mediaRecorder = mr;
-    state.recordingChunks = chunks;
-    state.recording = true;
+    navigator.mediaDevices.getDisplayMedia({
+        video: { displaySurface: 'browser', frameRate: 15 },
+        audio: true,
+        preferCurrentTab: true,
+        selfBrowserSurface: 'include',
+        surfaceSwitching: 'exclude',
+        systemAudio: 'exclude',
+      })
+      .then(function (stream) {
+        var mimeType = 'video/webm;codecs=vp8,opus';
+        if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm;codecs=vp8';
+        if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm';
+        if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = '';
 
-    mr.ondataavailable = function (e) { if (e.data.size) chunks.push(e.data); };
-    mr.onstop = function () {
-      state.recording = false;
-      var blob = new Blob(chunks, { type: 'video/webm' });
-      state.captureBlob = blob;
-      state.captureDataUrl = null;
-      state.captureType = MODES.RECORDING;
-      state.captureIsVideo = true;
-      state.step = 'form';
-      showDrawer();
-      renderDrawer();
-    };
-    mr.start(500);
+        var chunks = [];
+        var mr = new MediaRecorder(stream, mimeType ? { mimeType: mimeType } : undefined);
+        state.mediaRecorder = mr;
+        state.recordingChunks = chunks;
+        state.recording = true;
 
-    // Recording in progress — show a minimal recording indicator
-    var recIndicator = el('div', '', '&#9679; Recording... <button id="s4k-stop-rec" style="margin-left:12px;padding:4px 10px;background:#fff;color:#dc2626;border:none;border-radius:4px;cursor:pointer;font-size:12px;font-weight:600">Stop</button>');
-    recIndicator.id = 's4k-rec-indicator';
-    css(recIndicator, {
-      position: 'fixed', bottom: '80px',
-      right: state.position === 'bottom-right' ? '20px' : 'auto',
-      left: state.position === 'bottom-left' ? '20px' : 'auto',
-      background: '#dc2626', color: '#fff', padding: '8px 14px',
-      borderRadius: '20px', fontSize: '13px', fontWeight: '600',
-      zIndex: '2147483602', display: 'flex', alignItems: 'center',
-    });
-    document.body.appendChild(recIndicator);
+        mr.ondataavailable = function (e) { if (e.data && e.data.size) chunks.push(e.data); };
+        mr.onstop = function () {
+          stream.getTracks().forEach(function (t) { t.stop(); });
+          state.recording = false;
+          var blob = new Blob(chunks, { type: mr.mimeType || 'video/webm' });
+          state.captureBlob = blob;
+          state.captureDataUrl = null;
+          state.captureType = MODES.RECORDING;
+          state.captureIsVideo = true;
+          state.step = 'form';
+          var ind = document.getElementById('s4k-rec-indicator');
+          if (ind) ind.remove();
+          showDrawer();
+          renderDrawer();
+        };
 
-    // Auto-stop after 30s
-    var timeout = setTimeout(stopRecording, 30000);
+        // If user stops sharing via browser UI, stop the recorder too
+        stream.getVideoTracks()[0].addEventListener('ended', function () { stopRecording(); });
 
-    document.getElementById('s4k-stop-rec').addEventListener('click', function () {
-      clearTimeout(timeout);
-      stopRecording();
-    });
+        mr.start(500);
+
+        // Recording indicator
+        var recIndicator = el('div', '', '● Recording... <button id="s4k-stop-rec" style="margin-left:12px;padding:4px 10px;background:#fff;color:#dc2626;border:none;border-radius:4px;cursor:pointer;font-size:12px;font-weight:600">Stop</button>');
+        recIndicator.id = 's4k-rec-indicator';
+        css(recIndicator, {
+          position: 'fixed', bottom: '80px',
+          right: state.position === 'bottom-right' ? '20px' : 'auto',
+          left: state.position === 'bottom-left' ? '20px' : 'auto',
+          background: '#dc2626', color: '#fff', padding: '8px 14px',
+          borderRadius: '20px', fontSize: '13px', fontWeight: '600',
+          zIndex: '2147483602', display: 'flex', alignItems: 'center',
+        });
+        document.body.appendChild(recIndicator);
+
+        var timeout = setTimeout(stopRecording, 30000);
+        document.getElementById('s4k-stop-rec').addEventListener('click', function () {
+          clearTimeout(timeout);
+          stopRecording();
+        });
+      })
+      .catch(function (e) {
+        // User cancelled the picker — silently go back to mode selection
+        state.step = 'mode';
+        showDrawer();
+        renderDrawer();
+      });
   }
 
   function stopRecording() {
@@ -579,22 +647,32 @@
       borderBottom: '1px solid #e5e7eb', flexWrap: 'wrap', alignItems: 'center',
     });
 
+    var SVG_T_PEN   = '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" width="16" height="16"><path stroke-linecap="round" stroke-linejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L6.832 19.82a4.5 4.5 0 0 1-1.897 1.13l-2.685.8.8-2.685a4.5 4.5 0 0 1 1.13-1.897L16.863 4.487Zm0 0L19.5 7.125" /></svg>';
+    var SVG_T_RECT  = '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" width="16" height="16"><rect x="3" y="3" width="18" height="18" rx="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    var SVG_T_ARROW = '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" width="16" height="16"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" /></svg>';
+    var SVG_T_TEXT  = '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" width="16" height="16"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 0 1 .865-.501 48.172 48.172 0 0 0 3.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" /></svg>';
+    var SVG_T_BLUR  = '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" width="16" height="16"><path stroke-linecap="round" stroke-linejoin="round" d="M3.98 8.223A10.477 10.477 0 0 0 1.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.451 10.451 0 0 1 12 4.5c4.756 0 8.773 3.162 10.065 7.498a10.522 10.522 0 0 1-4.293 5.774M6.228 6.228 3 3m3.228 3.228 3.65 3.65m7.894 7.894L21 21m-3.228-3.228-3.65-3.65m0 0a3 3 0 1 0-4.243-4.243m4.242 4.242L9.88 9.88" /></svg>';
+    var SVG_T_UNDO  = '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" width="16" height="16"><path stroke-linecap="round" stroke-linejoin="round" d="M9 15 3 9m0 0 6-6M3 9h12a6 6 0 0 1 0 12h-3" /></svg>';
+    var SVG_T_TRASH = '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" width="16" height="16"><path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" /></svg>';
+
     var tools = [
-      { id: TOOLS.PEN, label: '✏️', title: 'Draw' },
-      { id: TOOLS.RECT, label: '⬜', title: 'Rectangle' },
-      { id: TOOLS.ARROW, label: '➡️', title: 'Arrow' },
-      { id: TOOLS.TEXT, label: '🔤', title: 'Text' },
-      { id: TOOLS.BLUR, label: '🔲', title: 'Redact' },
+      { id: TOOLS.PEN,   icon: SVG_T_PEN,   title: 'Draw' },
+      { id: TOOLS.RECT,  icon: SVG_T_RECT,  title: 'Rectangle' },
+      { id: TOOLS.ARROW, icon: SVG_T_ARROW, title: 'Arrow' },
+      { id: TOOLS.TEXT,  icon: SVG_T_TEXT,  title: 'Text' },
+      { id: TOOLS.BLUR,  icon: SVG_T_BLUR,  title: 'Redact' },
     ];
 
     tools.forEach(function (t) {
-      var btn = el('button', '', t.label);
+      var btn = el('button', '', t.icon);
       btn.title = t.title;
       css(btn, {
-        padding: '5px 8px', border: '2px solid',
+        width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        border: '1.5px solid',
         borderColor: state.currentTool === t.id ? state.primaryColor : '#d1d5db',
         background: state.currentTool === t.id ? '#eff6ff' : '#fff',
-        borderRadius: '6px', cursor: 'pointer', fontSize: '14px',
+        color: state.currentTool === t.id ? state.primaryColor : '#374151',
+        borderRadius: '6px', cursor: 'pointer',
       });
       btn.addEventListener('click', function () {
         state.currentTool = t.id;
@@ -608,23 +686,23 @@
     colors.forEach(function (c) {
       var swatch = el('button', '');
       css(swatch, {
-        width: '20px', height: '20px', borderRadius: '50%', background: c,
+        width: '22px', height: '22px', borderRadius: '50%', background: c,
         border: state.currentColor === c ? '3px solid #111' : '2px solid transparent',
-        cursor: 'pointer',
+        cursor: 'pointer', flexShrink: '0',
       });
       swatch.addEventListener('click', function () { state.currentColor = c; renderDrawer(); });
       toolbar.appendChild(swatch);
     });
 
     // Undo + Clear
-    var undoBtn = el('button', '', '↩');
-    css(undoBtn, { padding: '5px 8px', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' });
+    var undoBtn = el('button', '', SVG_T_UNDO);
+    css(undoBtn, { width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1.5px solid #d1d5db', borderRadius: '6px', cursor: 'pointer', background: '#fff', color: '#374151' });
     undoBtn.title = 'Undo';
     undoBtn.addEventListener('click', function () { state.annotations.pop(); redrawCanvas(); });
     toolbar.appendChild(undoBtn);
 
-    var clearBtn = el('button', '', '🗑');
-    css(clearBtn, { padding: '5px 8px', border: '1px solid #d1d5db', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' });
+    var clearBtn = el('button', '', SVG_T_TRASH);
+    css(clearBtn, { width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1.5px solid #d1d5db', borderRadius: '6px', cursor: 'pointer', background: '#fff', color: '#374151' });
     clearBtn.title = 'Clear annotations';
     clearBtn.addEventListener('click', function () { state.annotations = []; redrawCanvas(); });
     toolbar.appendChild(clearBtn);
@@ -842,6 +920,24 @@
     catLabel.appendChild(catSelect);
     wrap.appendChild(catLabel);
 
+    // Priority
+    var prioLabel = el('label', '', 'Priority');
+    css(prioLabel, { fontSize: '12px', fontWeight: '600', color: '#374151' });
+    var prioSelect = el('select', '');
+    css(prioSelect, {
+      width: '100%', padding: '8px 10px', marginTop: '4px',
+      border: '1px solid #d1d5db', borderRadius: '6px', fontSize: '13px',
+      background: '#fff', color: '#111',
+    });
+    [['low','Low'],['medium','Medium'],['high','High'],['critical','Critical']].forEach(function(p) {
+      var opt = el('option', '', p[1]);
+      opt.value = p[0];
+      if ((state.formData && state.formData.priority === p[0]) || (!state.formData && p[0] === 'medium')) opt.selected = true;
+      prioSelect.appendChild(opt);
+    });
+    prioLabel.appendChild(prioSelect);
+    wrap.appendChild(prioLabel);
+
     // Description
     var descLabel = el('label', '', 'Description');
     css(descLabel, { fontSize: '12px', fontWeight: '600', color: '#374151' });
@@ -895,7 +991,7 @@
       var chkEl = document.getElementById('s4k-attach-console');
       if (chkEl) attachConsole = chkEl.checked;
 
-      state.formData = { category: category, description: description };
+      state.formData = { category: category, description: description, priority: prioSelect.value };
       state.attachConsole = attachConsole;
       state.step = 'submitting';
       renderDrawer();
@@ -983,7 +1079,7 @@
         consoleErrors: state.attachConsole ? state.consoleErrors.slice(-20) : [],
         formData: state.formData || {},
         context: context,
-        priority: 'medium',
+        priority: (state.formData && state.formData.priority) || 'medium',
       };
 
       return req('POST', FUNCTIONS_BASE + '/submitSnap', payload, state.idToken);
@@ -1018,29 +1114,32 @@
       })
       .then(function (r) { return r.json(); })
       .then(function (data) {
-        return 'https://firebasestorage.googleapis.com/v0/b/' + storageBucket + '/o/' +
-          encodeURIComponent(data.name) + '?alt=media&token=' + data.downloadTokens;
+        var token = data.downloadTokens || '';
+        var base = 'https://firebasestorage.googleapis.com/v0/b/' + storageBucket + '/o/' + encodeURIComponent(data.name) + '?alt=media';
+        return token ? base + '&token=' + token : base;
       });
   }
 
   function uploadRecording(blob) {
     var config = state.config;
-    var path = 'snap_recordings/' + config.tenantId + '/' + Date.now() + '.webm';
+    var ext = blob.type.indexOf('mp4') !== -1 ? 'mp4' : 'webm';
+    var path = 'snap_recordings/' + config.tenantId + '/' + Date.now() + '.' + ext;
     var storageBucket = 'snap4knack2.firebasestorage.app';
     var uploadUrl = 'https://firebasestorage.googleapis.com/v0/b/' + storageBucket + '/o?uploadType=media&name=' + encodeURIComponent(path);
 
     return fetch(uploadUrl, {
       method: 'POST',
       headers: {
-        'Content-Type': 'video/webm',
+        'Content-Type': blob.type || 'video/webm',
         'Authorization': 'Bearer ' + state.idToken,
       },
       body: blob,
     })
       .then(function (r) { return r.json(); })
       .then(function (data) {
-        return 'https://firebasestorage.googleapis.com/v0/b/' + storageBucket + '/o/' +
-          encodeURIComponent(data.name) + '?alt=media&token=' + data.downloadTokens;
+        var token = data.downloadTokens || '';
+        var base = 'https://firebasestorage.googleapis.com/v0/b/' + storageBucket + '/o/' + encodeURIComponent(data.name) + '?alt=media';
+        return token ? base + '&token=' + token : base;
       });
   }
 
@@ -1120,6 +1219,9 @@
     getWidgetToken(state.config.pluginId, state.config.tenantId, userId, knackRole)
       .then(function (idToken) {
         state.idToken = idToken;
+        return fetchPluginBranding(state.config.pluginId, state.config.tenantId, idToken);
+      })
+      .then(function () {
         injectFAB();
       })
       .catch(function (e) {

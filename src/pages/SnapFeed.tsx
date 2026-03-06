@@ -23,8 +23,9 @@ import {
   RectangleStackIcon,
   CommandLineIcon,
   ClipboardDocumentListIcon,
+  LinkIcon,
 } from '@heroicons/react/24/outline';
-import type { SnapSubmission, SnapPlugin } from '../types';
+import type { SnapSubmission, SnapPlugin, Connection } from '../types';
 import { STATUS_OPTIONS, PRIORITY_OPTIONS, CAPTURE_TYPE_LABELS } from '../config/constants';
 
 const PAGE_SIZE = 20;
@@ -43,6 +44,7 @@ export default function SnapFeed() {
 
   const [submissions, setSubmissions] = useState<SnapSubmission[]>([]);
   const [plugins, setPlugins] = useState<SnapPlugin[]>([]);
+  const [connections, setConnections] = useState<Connection[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [lastDoc, setLastDoc] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
@@ -57,11 +59,15 @@ export default function SnapFeed() {
 
   useEffect(() => {
     if (!tenantId) return;
-    const loadPlugins = async () => {
-      const snap = await getDocs(collection(db, 'tenants', tenantId, 'snapPlugins'));
-      setPlugins(snap.docs.map((d) => ({ id: d.id, ...d.data() } as SnapPlugin)));
+    const loadMeta = async () => {
+      const [pluginSnap, connSnap] = await Promise.all([
+        getDocs(collection(db, 'tenants', tenantId, 'snapPlugins')),
+        getDocs(collection(db, 'tenants', tenantId, 'connections')),
+      ]);
+      setPlugins(pluginSnap.docs.map((d) => ({ id: d.id, ...d.data() } as SnapPlugin)));
+      setConnections(connSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Connection)));
     };
-    loadPlugins();
+    loadMeta();
   }, [tenantId]);
 
   useEffect(() => {
@@ -113,7 +119,28 @@ export default function SnapFeed() {
     );
   }, [submissions, search]);
 
-  const pluginMap = useMemo(() => Object.fromEntries(plugins.map((p) => [p.id, p.name])), [plugins]);
+  const pluginMap = useMemo(() => Object.fromEntries(plugins.map((p) => [p.id, p])), [plugins]);
+  const connectionMap = useMemo(() => Object.fromEntries(connections.map((c) => [c.id, c])), [connections]);
+
+  // Group filtered submissions by connectionId (via plugin), preserving submission order within each group
+  const grouped = useMemo(() => {
+    const order: string[] = [];
+    const groups: Record<string, SnapSubmission[]> = {};
+    for (const sub of filtered) {
+      const plugin = pluginMap[sub.pluginId];
+      const connId = plugin?.connectionId ?? '__unknown__';
+      if (!groups[connId]) {
+        order.push(connId);
+        groups[connId] = [];
+      }
+      groups[connId].push(sub);
+    }
+    return order.map((connId) => ({
+      connId,
+      connection: connectionMap[connId] ?? null,
+      submissions: groups[connId],
+    }));
+  }, [filtered, pluginMap, connectionMap]);
 
   return (
     <div>
@@ -194,12 +221,31 @@ export default function SnapFeed() {
         </div>
       ) : (
         <>
-          <div className="bg-white shadow rounded-lg overflow-hidden">
-            <div className="divide-y divide-gray-100">
-              {filtered.map((sub) => (
-                <SubmissionRow key={sub.id} sub={sub} pluginName={pluginMap[sub.pluginId] ?? '—'} />
-              ))}
-            </div>
+          <div className="space-y-6">
+            {grouped.map(({ connId, connection, submissions: groupSubs }) => (
+              <div key={connId}>
+                {/* Connection header */}
+                <div className="flex items-center gap-2 mb-2 px-1">
+                  <LinkIcon className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                  <h2 className="text-sm font-semibold text-gray-700 truncate">
+                    {connection ? connection.name : 'Unknown Connection'}
+                  </h2>
+                  {connection?.appName && (
+                    <span className="text-xs text-gray-400 truncate">· {connection.appName}</span>
+                  )}
+                  <span className="ml-auto text-xs text-gray-400 flex-shrink-0">
+                    {groupSubs.length} snap{groupSubs.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
+                <div className="bg-white shadow rounded-lg overflow-hidden">
+                  <div className="divide-y divide-gray-100">
+                    {groupSubs.map((sub) => (
+                      <SubmissionRow key={sub.id} sub={sub} pluginName={pluginMap[sub.pluginId]?.name ?? '—'} />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
           {hasMore && (
             <div className="mt-4 text-center">

@@ -30,6 +30,10 @@ export default function SnapDetail() {
   const [commentText, setCommentText] = useState('');
   const [postingComment, setPostingComment] = useState(false);
   const [showConsole, setShowConsole] = useState(false);
+
+  useEffect(() => {
+    if (sub?.type === 'console_errors') setShowConsole(true);
+  }, [sub?.type]);
   const [updating, setUpdating] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
@@ -179,7 +183,10 @@ export default function SnapDetail() {
         <div className="lg:col-span-2 space-y-4">
           <div className="bg-white shadow rounded-lg overflow-hidden">
             {sub.type === 'screen_recording' && sub.recordingUrl ? (
-              <video src={sub.recordingUrl} controls className="w-full max-h-[600px]" />
+              <video controls className="w-full max-h-[600px]" preload="metadata">
+                <source src={sub.recordingUrl} type="video/webm" />
+                <source src={sub.recordingUrl} type="video/mp4" />
+              </video>
             ) : sub.screenshotUrl ? (
               <div className="relative">
                 <img
@@ -195,6 +202,26 @@ export default function SnapDetail() {
                   style={{ maxHeight: '600px' }}
                 />
               </div>
+            ) : sub.type === 'console_errors' ? (
+              <div className="bg-gray-900 p-5">
+                <div className="flex items-center gap-2 mb-3">
+                  <CommandLineIcon className="h-5 w-5 text-red-400" />
+                  <span className="text-sm font-semibold text-gray-200">Console Errors ({sub.consoleErrors?.length ?? 0})</span>
+                </div>
+                {sub.consoleErrors && sub.consoleErrors.length > 0 ? (
+                  <div className="space-y-2">
+                    {sub.consoleErrors.map((err, i) => (
+                      <div key={i} className="bg-gray-800 rounded-lg px-4 py-3">
+                        <p className="text-xs text-red-400 font-mono break-all">{err.message}</p>
+                        {err.source && <p className="text-xs text-gray-500 font-mono mt-1 break-all">{err.source}</p>}
+                        {err.timestamp && <p className="text-xs text-gray-600 mt-1">{new Date(err.timestamp).toLocaleTimeString()}</p>}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-400 italic">No console errors were captured at the time of submission.</p>
+                )}
+              </div>
             ) : (
               <div className="flex items-center justify-center h-64 bg-gray-50 text-gray-400">
                 <VideoCameraIcon className="h-12 w-12" />
@@ -202,8 +229,8 @@ export default function SnapDetail() {
             )}
           </div>
 
-          {/* Console errors */}
-          {sub.consoleErrors && sub.consoleErrors.length > 0 && (
+          {/* Console errors — collapsible, shown for screenshot/recording snaps that also captured errors */}
+          {sub.type !== 'console_errors' && sub.consoleErrors && sub.consoleErrors.length > 0 && (
             <div className="bg-white shadow rounded-lg overflow-hidden">
               <button
                 onClick={() => setShowConsole((v) => !v)}

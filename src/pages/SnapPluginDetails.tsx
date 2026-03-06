@@ -116,7 +116,7 @@ export default function SnapPluginDetails() {
 
   const copyEmbed = () => {
     if (!plugin || !connection) return;
-    const code = `(function(){var s=document.createElement('script');\ns.src='${WIDGET_BASE_URL}/widget/loader.js';\ns.onload=function(){Snap4KnackLoader.init({\n  pluginId:'${plugin.id}',tenantId:'${tenantId}',appId:'${connection.appId}'\n})};document.head.appendChild(s)})();`;
+    const code = `(function(){var s=document.createElement('script');\ns.src='${WIDGET_BASE_URL}/widget/loader.js';\ns.onload=function(){Snap4KnackLoader.init({\n  pluginId:'${plugin.id}',tenantId:'${tenantId}',appId:'${connection.appId}',\n  primaryColor:'${plugin.customBranding?.primaryColor ?? '#3b82f6'}',position:'${plugin.customBranding?.position ?? 'bottom-right'}'\n})};document.head.appendChild(s)})();`;
     navigator.clipboard.writeText(code).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
@@ -231,7 +231,8 @@ export default function SnapPluginDetails() {
 {`(function(){var s=document.createElement('script');
 s.src='${WIDGET_BASE_URL}/widget/loader.js';
 s.onload=function(){Snap4KnackLoader.init({
-  pluginId:'${plugin.id}',tenantId:'${tenantId}',appId:'${connection.appId}'
+  pluginId:'${plugin.id}',tenantId:'${tenantId}',appId:'${connection.appId}',
+  primaryColor:'${plugin.customBranding?.primaryColor ?? '#3b82f6'}',position:'${plugin.customBranding?.position ?? 'bottom-right'}'
 })};document.head.appendChild(s)})();`}
             </pre>
             <button
