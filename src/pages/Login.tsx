@@ -4,16 +4,15 @@ import { useAuth } from '../contexts/AuthContext';
 import SEO from '../components/SEO';
 import { CameraIcon, ExclamationCircleIcon } from '@heroicons/react/24/outline';
 
-type Mode = 'login' | 'signup' | 'forgot';
+type Mode = 'login' | 'forgot';
 
 export default function Login() {
-  const { login, signup, resetPassword } = useAuth();
+  const { login, resetPassword } = useAuth();
   const navigate = useNavigate();
 
   const [mode, setMode] = useState<Mode>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [companyName, setCompanyName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -26,13 +25,6 @@ export default function Login() {
     try {
       if (mode === 'login') {
         await login(email, password);
-        navigate('/dashboard');
-      } else if (mode === 'signup') {
-        if (!companyName.trim()) {
-          setError('Company name is required.');
-          return;
-        }
-        await signup(email, password, companyName);
         navigate('/dashboard');
       } else {
         await resetPassword(email);
@@ -49,7 +41,7 @@ export default function Login() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8">
       <SEO
-        title={mode === 'login' ? 'Sign In' : mode === 'signup' ? 'Create Account' : 'Reset Password'}
+        title={mode === 'login' ? 'Sign In' : 'Reset Password'}
         path="/login"
       />
 
@@ -60,9 +52,7 @@ export default function Login() {
           </div>
         </div>
         <h2 className="mt-4 text-center text-2xl font-bold text-gray-900">
-          {mode === 'login' && 'Sign in to Snap4Knack'}
-          {mode === 'signup' && 'Create your account'}
-          {mode === 'forgot' && 'Reset your password'}
+          {mode === 'login' ? 'Sign in to Snap4Knack' : 'Reset your password'}
         </h2>
       </div>
 
@@ -81,20 +71,6 @@ export default function Login() {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-5">
-            {mode === 'signup' && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Company Name</label>
-                <input
-                  type="text"
-                  required
-                  value={companyName}
-                  onChange={(e) => setCompanyName(e.target.value)}
-                  className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                  placeholder="Acme Inc."
-                />
-              </div>
-            )}
-
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Email address</label>
               <input
@@ -107,7 +83,7 @@ export default function Login() {
               />
             </div>
 
-            {mode !== 'forgot' && (
+            {mode === 'login' && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
                 <input
@@ -139,39 +115,17 @@ export default function Login() {
               disabled={loading}
               className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 px-4 rounded-lg shadow-sm disabled:opacity-50 transition-colors"
             >
-              {loading
-                ? 'Please wait…'
-                : mode === 'login'
-                ? 'Sign in'
-                : mode === 'signup'
-                ? 'Create account'
-                : 'Send reset email'}
+              {loading ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Send reset email'}
             </button>
           </form>
 
-          <div className="mt-6 text-center text-sm text-gray-500">
-            {mode === 'login' && (
-              <>
-                Don't have an account?{' '}
-                <button onClick={() => setMode('signup')} className="text-blue-600 hover:text-blue-700 font-medium">
-                  Sign up
-                </button>
-              </>
-            )}
-            {mode === 'signup' && (
-              <>
-                Already have an account?{' '}
-                <button onClick={() => setMode('login')} className="text-blue-600 hover:text-blue-700 font-medium">
-                  Sign in
-                </button>
-              </>
-            )}
-            {mode === 'forgot' && (
+          {mode === 'forgot' && (
+            <div className="mt-6 text-center text-sm">
               <button onClick={() => setMode('login')} className="text-blue-600 hover:text-blue-700 font-medium">
                 Back to sign in
               </button>
-            )}
-          </div>
+            </div>
+          )}
         </div>
 
         <p className="mt-4 text-center text-xs text-gray-400">
@@ -189,7 +143,6 @@ function getFirebaseErrorMessage(msg: string): string {
   if (msg.includes('user-not-found') || msg.includes('wrong-password') || msg.includes('invalid-credential')) {
     return 'Invalid email or password.';
   }
-  if (msg.includes('email-already-in-use')) return 'An account with this email already exists.';
   if (msg.includes('weak-password')) return 'Password must be at least 6 characters.';
   if (msg.includes('invalid-email')) return 'Please enter a valid email address.';
   if (msg.includes('too-many-requests')) return 'Too many attempts. Please try again later.';

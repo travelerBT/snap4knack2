@@ -228,19 +228,19 @@ export default function Home() {
             Add a role-gated screenshot widget to your Knack application in minutes. Capture screenshots, recordings, console logs, and annotations — then manage everything in a real-time Kanban board.
           </p>
           <div className="mt-10 flex flex-col sm:flex-row gap-4 justify-center">
-            <Link
-              to="/login"
-              className="inline-flex items-center gap-2 bg-white text-[#192f52] font-semibold px-6 py-3 rounded-lg hover:bg-blue-50 transition-colors"
-            >
-              Get Started Free
-              <ArrowRightIcon className="h-4 w-4" />
-            </Link>
             <a
               href="#contact"
+              className="inline-flex items-center gap-2 bg-white text-[#192f52] font-semibold px-6 py-3 rounded-lg hover:bg-blue-50 transition-colors"
+            >
+              Get in Touch
+              <ArrowRightIcon className="h-4 w-4" />
+            </a>
+            <Link
+              to="/login"
               className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white font-semibold px-6 py-3 rounded-lg transition-colors"
             >
-              Contact Us
-            </a>
+              Sign In
+            </Link>
           </div>
         </div>
       </section>
@@ -369,14 +369,14 @@ export default function Home() {
       <section className="py-16 px-4 bg-[#192f52]">
         <div className="max-w-2xl mx-auto text-center">
           <h2 className="text-2xl font-bold text-white">Ready to get started?</h2>
-          <p className="mt-3 text-blue-200">Sign in to your Snap4Knack account and connect your first Knack app.</p>
-          <Link
-            to="/login"
+          <p className="mt-3 text-blue-200">Get in touch and we'll set up your account.</p>
+          <a
+            href="#contact"
             className="mt-6 inline-flex items-center gap-2 bg-white text-[#192f52] font-semibold px-6 py-3 rounded-lg hover:bg-blue-50 transition-colors"
           >
-            Sign In
+            Contact Us
             <ArrowRightIcon className="h-4 w-4" />
-          </Link>
+          </a>
         </div>
       </section>
 

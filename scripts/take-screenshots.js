@@ -70,7 +70,7 @@ async function main() {
 
   // ── Log in ──────────────────────────────────────────────────────────────
   console.log(`🔐  Logging in as ${EMAIL}…`);
-  await page.goto(`${BASE}/login`, { waitUntil: 'networkidle' });
+  await page.goto(`${BASE}/login`, { waitUntil: 'domcontentloaded' });
 
   await page.fill('input[type="email"]', EMAIL);
   await page.fill('input[type="password"]', PASSWORD);
@@ -94,9 +94,9 @@ async function main() {
   for (const shot of SHOTS) {
     console.log(`📸  ${shot.label}`);
     try {
-      await page.goto(`${BASE}${shot.route}`, { waitUntil: 'networkidle' });
+      await page.goto(`${BASE}${shot.route}`, { waitUntil: 'load' });
       await page.waitForSelector('h1', { timeout: 8000 });
-      await page.waitForTimeout(1200);
+      await page.waitForTimeout(2500);
 
       if (shot.kanban) {
         const btn = await page.$('button[title="Kanban view"]');
@@ -113,8 +113,8 @@ async function main() {
   // ── Snap Detail ─────────────────────────────────────────────────────────
   console.log('📸  Snap Detail');
   try {
-    await page.goto(`${BASE}/snap-feed`, { waitUntil: 'networkidle' });
-    await page.waitForTimeout(1500);
+    await page.goto(`${BASE}/snap-feed`, { waitUntil: 'load' });
+    await page.waitForTimeout(3000);
 
     const listBtn = await page.$('button[title="List view"]');
     if (listBtn) { await listBtn.click(); await page.waitForTimeout(500); }
@@ -122,8 +122,7 @@ async function main() {
     const firstRow = await page.$('a[href^="/snap-feed/"]');
     if (firstRow) {
       await firstRow.click();
-      await page.waitForSelector('h1', { timeout: 8000 });
-      await page.waitForTimeout(1500);
+      await page.waitForTimeout(3000);
       await capture(page, 'snap-detail.png');
       console.log('   ✓  public/screenshots/snap-detail.png');
     } else {
