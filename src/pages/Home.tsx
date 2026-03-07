@@ -94,11 +94,6 @@ const screenshots = [
     caption: 'Real-time Kanban — drag cards between New, In Progress, Resolved, and Archived.',
   },
   {
-    src: '/screenshots/snap-detail.png',
-    label: 'Snap Detail',
-    caption: 'Full snap view with annotated screenshot, console logs, metadata, and threaded comments.',
-  },
-  {
     src: '/screenshots/dashboard.png',
     label: 'Dashboard',
     caption: 'At-a-glance stats across all your connections and plugins.',
@@ -113,11 +108,18 @@ const screenshots = [
     label: 'Snap Plugins',
     caption: 'Configure widget position, accent color, and role restrictions per plugin.',
   },
+  {
+    src: '/screenshots/account.png',
+    label: 'Account',
+    caption: 'Manage your profile, team members, and billing settings.',
+  },
 ];
 
 function ProductScreenshots() {
   const [active, setActive] = useState(0);
+  const [errors, setErrors] = useState<Record<string, boolean>>({});
   const current = screenshots[active];
+  const hasError = errors[current.src];
 
   return (
     <section className="py-20 px-4 bg-white overflow-hidden">
@@ -156,26 +158,20 @@ function ProductScreenshots() {
             </div>
           </div>
           {/* Image */}
-          <div className="relative aspect-[16/9] bg-gray-100">
-            <img
-              key={current.src}
-              src={current.src}
-              alt={current.label}
-              className="w-full h-full object-cover object-top"
-              onError={(e) => {
-                // If screenshot doesn't exist yet, show a placeholder
-                (e.currentTarget as HTMLImageElement).style.display = 'none';
-                (e.currentTarget.nextElementSibling as HTMLElement)!.style.display = 'flex';
-              }}
-            />
-            {/* Placeholder shown when image is missing */}
-            <div
-              style={{ display: 'none' }}
-              className="absolute inset-0 flex flex-col items-center justify-center bg-gray-100 text-gray-400"
-            >
-              <CameraIcon className="h-12 w-12 mb-3" />
-              <p className="text-sm font-medium">Screenshot coming soon</p>
-            </div>
+          <div className="aspect-[16/9] bg-gray-100 flex items-center justify-center">
+            {hasError ? (
+              <div className="flex flex-col items-center justify-center text-gray-400">
+                <CameraIcon className="h-12 w-12 mb-3" />
+                <p className="text-sm font-medium">Screenshot coming soon</p>
+              </div>
+            ) : (
+              <img
+                src={current.src}
+                alt={current.label}
+                className="w-full h-full object-cover object-top"
+                onError={() => setErrors((prev) => ({ ...prev, [current.src]: true }))}
+              />
+            )}
           </div>
         </div>
 
