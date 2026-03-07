@@ -87,6 +87,105 @@ const steps = [
   { num: '4', title: 'Users Start Snapping', desc: 'Role-matched users see the floating button and can submit visual feedback instantly.' },
 ];
 
+const screenshots = [
+  {
+    src: '/screenshots/snap-feed.png',
+    label: 'Kanban Board',
+    caption: 'Real-time Kanban — drag cards between New, In Progress, Resolved, and Archived.',
+  },
+  {
+    src: '/screenshots/snap-detail.png',
+    label: 'Snap Detail',
+    caption: 'Full snap view with annotated screenshot, console logs, metadata, and threaded comments.',
+  },
+  {
+    src: '/screenshots/dashboard.png',
+    label: 'Dashboard',
+    caption: 'At-a-glance stats across all your connections and plugins.',
+  },
+  {
+    src: '/screenshots/connections.png',
+    label: 'Connections',
+    caption: 'Connect any number of Knack apps — each gets its own isolated feed.',
+  },
+  {
+    src: '/screenshots/snap-plugins.png',
+    label: 'Snap Plugins',
+    caption: 'Configure widget position, accent color, and role restrictions per plugin.',
+  },
+];
+
+function ProductScreenshots() {
+  const [active, setActive] = useState(0);
+  const current = screenshots[active];
+
+  return (
+    <section className="py-20 px-4 bg-white overflow-hidden">
+      <div className="max-w-6xl mx-auto">
+        <h2 className="text-3xl font-bold text-center text-gray-900">See it in action</h2>
+        <p className="mt-3 text-center text-gray-500 max-w-2xl mx-auto">
+          A complete bug-tracking and visual-feedback workflow — right inside your Knack app.
+        </p>
+
+        {/* Tab strip */}
+        <div className="mt-10 flex flex-wrap justify-center gap-2">
+          {screenshots.map((s, i) => (
+            <button
+              key={s.label}
+              onClick={() => setActive(i)}
+              className={`px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+                i === active
+                  ? 'bg-[#192f52] text-white shadow'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Screenshot frame */}
+        <div className="mt-8 rounded-2xl overflow-hidden shadow-2xl border border-gray-200 bg-gray-900">
+          {/* Fake browser chrome */}
+          <div className="flex items-center gap-2 px-4 py-3 bg-gray-800 border-b border-gray-700">
+            <span className="h-3 w-3 rounded-full bg-red-500" />
+            <span className="h-3 w-3 rounded-full bg-yellow-400" />
+            <span className="h-3 w-3 rounded-full bg-green-500" />
+            <div className="ml-4 flex-1 bg-gray-700 rounded-md px-3 py-1 text-xs text-gray-400 truncate max-w-sm">
+              app.snap4knack.com
+            </div>
+          </div>
+          {/* Image */}
+          <div className="relative aspect-[16/9] bg-gray-100">
+            <img
+              key={current.src}
+              src={current.src}
+              alt={current.label}
+              className="w-full h-full object-cover object-top"
+              onError={(e) => {
+                // If screenshot doesn't exist yet, show a placeholder
+                (e.currentTarget as HTMLImageElement).style.display = 'none';
+                (e.currentTarget.nextElementSibling as HTMLElement)!.style.display = 'flex';
+              }}
+            />
+            {/* Placeholder shown when image is missing */}
+            <div
+              style={{ display: 'none' }}
+              className="absolute inset-0 flex flex-col items-center justify-center bg-gray-100 text-gray-400"
+            >
+              <CameraIcon className="h-12 w-12 mb-3" />
+              <p className="text-sm font-medium">Screenshot coming soon</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Caption */}
+        <p className="mt-4 text-center text-sm text-gray-500">{current.caption}</p>
+      </div>
+    </section>
+  );
+}
+
 export default function Home() {
   const [form, setForm] = useState({ name: '', email: '', company: '', message: '' });
   const [sending, setSending] = useState(false);
@@ -147,6 +246,9 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      {/* Product Screenshots */}
+      <ProductScreenshots />
 
       {/* Features */}
       <section className="py-20 px-4 bg-gray-50">
