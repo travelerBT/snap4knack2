@@ -302,47 +302,51 @@ export default function KanbanBoard({ submissions, linkPrefix, pluginMap, onStat
     });
   }
 
-  async function handleDragEnd(event: DragEndEvent) {
+  function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
     setDraggingId(null);
 
-    if (!over) return;
+    if (!over) {
+      setDragStartCol(null);
+      return;
+    }
 
     const activeId = String(active.id);
     const overId = String(over.id);
+    // Capture dragStartCol BEFORE clearing — this is where the drag began,
+    // before handleDragOver may have already moved the card in localGroups.
+    const origCol = dragStartCol;
+    setDragStartCol(null);
 
     setLocalGroups((prev) => {
-      const activeCol = findColOfId(activeId, prev);
-      if (!activeCol) return prev;
-
-      // Determine target column
-      const targetCol = STATUS_VALUES.has(overId) ? overId : (findColOfId(overId, prev) ?? activeCol);
+      const currentCol = findColOfId(activeId, prev);
+      if (!currentCol) return prev;
 
       const next = { ...prev };
 
-      if (activeCol !== targetCol) {
-        // Cross-column: status change
-        next[activeCol] = next[activeCol].filter((id) => id !== activeId);
+      if (origCol && origCol !== currentCol) {
+        // handleDragOver already moved the card to currentCol — just persist the status.
+        onStatusChange?.(activeId, currentCol);
+        return next;
+      }
+
+      const targetCol = STATUS_VALUES.has(overId) ? overId : (findColOfId(overId, prev) ?? currentCol);
+
+      if (currentCol !== targetCol) {
+        // Cross-column drop (handleDragOver didn't fire an intermediate move)
+        next[currentCol] = next[currentCol].filter((id) => id !== activeId);
         next[targetCol] = [...(next[targetCol] ?? []), activeId];
-        if (onStatusChange) {
-          setTimeout(() => onStatusChange(activeId, targetCol), 0);
-        }
+        onStatusChange?.(activeId, targetCol);
       } else {
-        // Same column: reorder
+        // Same-column reorder
         if (!STATUS_VALUES.has(overId)) {
-          const oldIndex = next[activeCol].indexOf(activeId);
-          const newIndex = next[activeCol].indexOf(overId);
+          const oldIndex = next[currentCol].indexOf(activeId);
+          const newIndex = next[currentCol].indexOf(overId);
           if (oldIndex !== -1 && newIndex !== -1 && oldIndex !== newIndex) {
-            next[activeCol] = arrayMove(next[activeCol], oldIndex, newIndex);
+            next[currentCol] = arrayMove(next[currentCol], oldIndex, newIndex);
           }
         }
-        // Fire reorder if order actually changed
-        if (onReorder) {
-          const origCol = dragStartCol ?? activeCol;
-          if (origCol === activeCol) {
-            setTimeout(() => onReorder!(activeCol, next[activeCol]), 0);
-          }
-        }
+        onReorder?.(currentCol, [...next[currentCol]]);
       }
 
       return next;
