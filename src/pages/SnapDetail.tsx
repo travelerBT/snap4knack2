@@ -202,6 +202,18 @@ export default function SnapDetail() {
                 <source src={sub.recordingUrl} type="video/webm" />
                 <source src={sub.recordingUrl} type="video/mp4" />
               </video>
+            ) : sub.screenshotStatus === 'scanning' ? (
+              <div className="flex flex-col items-center justify-center h-64 bg-yellow-50 gap-3 p-6">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-yellow-500" />
+                <p className="text-sm font-medium text-yellow-700">Scanning image for protected health information…</p>
+                <p className="text-xs text-yellow-500">This usually takes a few seconds. The page will update automatically.</p>
+              </div>
+            ) : sub.screenshotStatus === 'scan_failed' ? (
+              <div className="flex flex-col items-center justify-center h-64 bg-red-50 gap-3 p-6">
+                <ExclamationCircleIcon className="h-10 w-10 text-red-400" />
+                <p className="text-sm font-medium text-red-700">PHI image scan failed</p>
+                <p className="text-xs text-red-500">The screenshot could not be processed. Please contact support.</p>
+              </div>
             ) : sub.screenshotUrl ? (
               <div className="relative">
                 <img

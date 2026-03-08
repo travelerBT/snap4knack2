@@ -50,6 +50,7 @@ export default function SnapPlugins() {
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
   const [pluginName, setPluginName] = useState('');
   const [allowRecording, setAllowRecording] = useState(false);
+  const [hipaaEnabled, setHipaaEnabled] = useState(false);
   const [categories, setCategories] = useState<string[]>([...DEFAULT_CATEGORIES]);
   const [notifyEmails, setNotifyEmails] = useState('');
   const [saving, setSaving] = useState(false);
@@ -73,6 +74,7 @@ export default function SnapPlugins() {
     setSelectedRoles([]);
     setPluginName('');
     setAllowRecording(false);
+    setHipaaEnabled(false);
     setCategories([...DEFAULT_CATEGORIES]);
     setNotifyEmails('');
     setWizardOpen(true);
@@ -94,9 +96,11 @@ export default function SnapPlugins() {
         name: pluginName.trim() || `Snap Plugin — ${selectedConnection?.name || ''}`,
         status: 'active',
         selectedRoles,
+        hipaaEnabled: hipaaEnabled || false,
+        retentionDays: hipaaEnabled ? 2555 : 365,
         snapSettings: {
           ...DEFAULT_SNAP_SETTINGS,
-          allowRecording,
+          allowRecording: hipaaEnabled ? false : allowRecording,
           categories,
           notifyEmails: emails,
         },
@@ -284,6 +288,29 @@ export default function SnapPlugins() {
 
                   <div className="flex items-center justify-between py-3 border-t border-gray-100">
                     <div>
+                      <p className="text-sm font-medium text-gray-900">HIPAA Compliant Mode</p>
+                      <p className="text-xs text-gray-400">PHI scanning, 7-year retention, recording disabled</p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        const next = !hipaaEnabled;
+                        setHipaaEnabled(next);
+                        if (next) setAllowRecording(false);
+                      }}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                        hipaaEnabled ? 'bg-green-600' : 'bg-gray-200'
+                      }`}
+                    >
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                        hipaaEnabled ? 'translate-x-6' : 'translate-x-1'
+                      }`} />
+                    </button>
+                  </div>
+
+                  <div className={`flex items-center justify-between py-3 border-t border-gray-100 ${
+                    hipaaEnabled ? 'opacity-40 pointer-events-none' : ''
+                  }`}>
+                    <div>
                       <p className="text-sm font-medium text-gray-900">Allow Screen Recording</p>
                       <p className="text-xs text-gray-400">Enables the video capture mode in the widget</p>
                     </div>
@@ -350,12 +377,18 @@ export default function SnapPlugins() {
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-500">Screen Recording</span>
-                      <span className="font-medium text-gray-900">{allowRecording ? 'Enabled' : 'Disabled'}</span>
+                      <span className="font-medium text-gray-900">{hipaaEnabled ? 'Disabled (HIPAA)' : allowRecording ? 'Enabled' : 'Disabled'}</span>
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-500">Categories</span>
                       <span className="font-medium text-gray-900">{categories.join(', ')}</span>
                     </div>
+                    {hipaaEnabled && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-500">HIPAA Mode</span>
+                        <span className="font-medium text-green-700">✓ Enabled — 7-year retention, DLP scanning</span>
+                      </div>
+                    )}
                   </div>
                   <p className="text-xs text-gray-400">
                     After creation you'll be taken to the plugin details page where you can copy the embed code, configure branding, and invite clients.

@@ -79,6 +79,8 @@ export interface SnapSettings {
   formFields: FormField[];
   categories: string[];
   notifyEmails: string[];
+  hipaaEnabled?: boolean;
+  retentionDays?: number;
 }
 
 export interface CustomBranding {
@@ -96,6 +98,8 @@ export interface SnapPlugin {
   selectedRoles: string[]; // KnackRole keys e.g. ['object_1', 'object_3']
   snapSettings: SnapSettings;
   customBranding: CustomBranding;
+  hipaaEnabled?: boolean;
+  retentionDays?: number;
   createdAt: Timestamp;
 }
 
@@ -162,6 +166,8 @@ export interface SnapSubmission {
   tenantId: string;
   type: CaptureType;
   screenshotUrl?: string;
+  screenshotStatus?: 'scanning' | 'ready' | 'scan_failed';
+  scanError?: string;
   recordingUrl?: string;
   annotationData?: AnnotationData;
   consoleErrors: ConsoleError[];
@@ -173,6 +179,8 @@ export interface SnapSubmission {
   context: SubmissionContext;
   status: SubmissionStatus;
   priority?: 'low' | 'medium' | 'high' | 'critical';
+  hipaaEnabled?: boolean;
+  retentionDays?: number;
   snapNumber?: number;
   sortOrder?: number;
   createdAt: Timestamp;

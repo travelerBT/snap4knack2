@@ -16,6 +16,7 @@ import {
   TrashIcon,
   ExclamationCircleIcon,
   LinkIcon,
+  ShieldCheckIcon,
 } from '@heroicons/react/24/outline';
 import type { SnapPlugin, Connection, ClientInvitation, KnackRole, TenantShare } from '../types';
 import { WIDGET_BASE_URL } from '../config/constants';
@@ -316,6 +317,17 @@ export default function SnapPluginDetails() {
               </dd>
             </div>
           </dl>
+          {plugin.hipaaEnabled && (
+            <div className="flex items-center gap-3 bg-green-50 border border-green-200 rounded-lg px-4 py-3 mt-2">
+              <ShieldCheckIcon className="h-5 w-5 text-green-600 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-medium text-green-800">HIPAA Compliant Mode Active</p>
+                <p className="text-xs text-green-600 mt-0.5">
+                  DLP PHI scanning enabled · 7-year retention ({plugin.retentionDays ?? 2555} days) · Screen recording disabled
+                </p>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

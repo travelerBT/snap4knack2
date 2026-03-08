@@ -1,12 +1,22 @@
 // Email templates for SendGrid transactional emails
 
+const HIPAA_FOOTER = `
+  <p style="margin-top:16px;padding:12px;background:#fef3c7;border:1px solid #fcd34d;border-radius:6px;font-size:11px;color:#92400e">
+    ⚠️ <strong>HIPAA Notice:</strong> This notification does not contain patient health information.
+    Log in to view full details securely.
+  </p>`;
+
 export function criticalSnapEmail(opts: {
   recipientEmail: string;
   pluginName: string;
   category: string;
   pageUrl: string;
   dashboardUrl: string;
+  hipaaMode?: boolean;
 }): { to: string; subject: string; html: string } {
+  const pageSection = opts.hipaaMode
+    ? ''
+    : `<p style="margin:0 0 20px;color:#374151"><strong>Page:</strong> <a href="${opts.pageUrl}" style="color:#dc2626">${opts.pageUrl}</a></p>`;
   return {
     to: opts.recipientEmail,
     subject: `🚨 [Snap4Knack] CRITICAL snap: ${opts.category} — ${opts.pluginName}`,
@@ -19,10 +29,11 @@ export function criticalSnapEmail(opts: {
           <p style="margin:0 0 12px;color:#991b1b;font-weight:600">A snap marked <strong>Critical</strong> priority has been submitted and requires immediate attention.</p>
           <p style="margin:0 0 12px;color:#374151"><strong>Plugin:</strong> ${opts.pluginName}</p>
           <p style="margin:0 0 12px;color:#374151"><strong>Category:</strong> ${opts.category}</p>
-          <p style="margin:0 0 20px;color:#374151"><strong>Page:</strong> <a href="${opts.pageUrl}" style="color:#dc2626">${opts.pageUrl}</a></p>
+          ${pageSection}
           <a href="${opts.dashboardUrl}" style="background:#dc2626;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600;display:inline-block">
             View Snap Now →
           </a>
+          ${opts.hipaaMode ? HIPAA_FOOTER : ''}
         </div>
         <p style="margin-top:16px;font-size:12px;color:#9ca3af;text-align:center">
           Snap4Knack · Unsubscribe in your account settings
@@ -38,7 +49,11 @@ export function snapNotificationEmail(opts: {
   category: string;
   pageUrl: string;
   dashboardUrl: string;
+  hipaaMode?: boolean;
 }): { to: string; subject: string; html: string } {
+  const pageSection = opts.hipaaMode
+    ? ''
+    : `<p style="margin:0 0 20px;color:#374151"><strong>Page:</strong> <a href="${opts.pageUrl}" style="color:#2563eb">${opts.pageUrl}</a></p>`;
   return {
     to: opts.recipientEmail,
     subject: `[Snap4Knack] New snap: ${opts.category} — ${opts.pluginName}`,
@@ -50,10 +65,11 @@ export function snapNotificationEmail(opts: {
         <div style="background:#f9fafb;padding:24px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px">
           <p style="margin:0 0 12px;color:#374151"><strong>Plugin:</strong> ${opts.pluginName}</p>
           <p style="margin:0 0 12px;color:#374151"><strong>Category:</strong> ${opts.category}</p>
-          <p style="margin:0 0 20px;color:#374151"><strong>Page:</strong> <a href="${opts.pageUrl}" style="color:#2563eb">${opts.pageUrl}</a></p>
+          ${pageSection}
           <a href="${opts.dashboardUrl}" style="background:#2563eb;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600;display:inline-block">
             View Snap →
           </a>
+          ${opts.hipaaMode ? HIPAA_FOOTER : ''}
         </div>
         <p style="margin-top:16px;font-size:12px;color:#9ca3af;text-align:center">
           Snap4Knack · Unsubscribe in your account settings
@@ -62,6 +78,7 @@ export function snapNotificationEmail(opts: {
     `,
   };
 }
+
 
 export function clientInvitationEmail(opts: {
   recipientEmail: string;
@@ -136,10 +153,16 @@ export function commentNotificationEmail(opts: {
   snapNumber?: number;
   snapCategory?: string;
   dashboardUrl: string;
+  hipaaMode?: boolean;
 }): { to: string; subject: string; html: string } {
   const snapLabel = opts.snapNumber != null
     ? `#${opts.snapNumber}${opts.snapCategory ? ` — ${opts.snapCategory}` : ''}`
     : (opts.snapCategory || 'Snap');
+  const commentSection = opts.hipaaMode
+    ? `<p style="margin:0 0 20px;color:#374151">A new comment has been added. Log in to view it securely.</p>`
+    : `<blockquote style="border-left:3px solid #2563eb;margin:0 0 20px;padding:8px 16px;background:#eff6ff;color:#1e40af;border-radius:0 6px 6px 0">
+            ${opts.commentText}
+          </blockquote>`;
   return {
     to: opts.recipientEmail,
     subject: `[Snap4Knack] New comment on ${snapLabel} from ${opts.authorName}`,
@@ -150,12 +173,11 @@ export function commentNotificationEmail(opts: {
         </div>
         <div style="background:#f9fafb;padding:24px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px">
           <p style="margin:0 0 8px;color:#374151"><strong>${opts.authorName}</strong> commented:</p>
-          <blockquote style="border-left:3px solid #2563eb;margin:0 0 20px;padding:8px 16px;background:#eff6ff;color:#1e40af;border-radius:0 6px 6px 0">
-            ${opts.commentText}
-          </blockquote>
+          ${commentSection}
           <a href="${opts.dashboardUrl}" style="background:#2563eb;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600;display:inline-block">
             View Thread →
           </a>
+          ${opts.hipaaMode ? HIPAA_FOOTER : ''}
         </div>
       </div>
     `,

@@ -16,6 +16,7 @@
   },
   "main": "lib/index.js",
   "dependencies": {
+    "@google-cloud/dlp": "^5.0.0",
     "@google-cloud/secret-manager": "^5.0.0",
     "@sendgrid/mail": "^8.1.6",
     "axios": "^1.6.5",

@@ -53,6 +53,7 @@
     primaryColor: '#3b82f6',
     position: 'bottom-right',
     categories: ['Bug', 'Feature Request', 'Question', 'Other'],
+    hipaaEnabled: false,
   };
 
   // ── Console capture (all levels) ──────────────────────────────────────────
@@ -173,6 +174,10 @@
           var cats = sf.categories.arrayValue.values.map(function (v) { return v.stringValue; }).filter(Boolean);
           if (cats.length) state.categories = cats;
         }
+      }
+      // Read HIPAA flag directly from plugin root fields
+      if (doc.fields.hipaaEnabled && doc.fields.hipaaEnabled.booleanValue === true) {
+        state.hipaaEnabled = true;
       }
     }).catch(function (e) {
       console.warn('[Snap4Knack] Could not fetch plugin branding:', e.message);
@@ -942,6 +947,17 @@
     var wrap = el('div', '');
     css(wrap, { padding: '16px', display: 'flex', flexDirection: 'column', gap: '12px' });
 
+    // HIPAA PHI warning banner
+    if (state.hipaaEnabled) {
+      var hipaaBanner = el('div', '');
+      css(hipaaBanner, {
+        background: '#fef3c7', border: '1px solid #fbbf24', borderRadius: '8px',
+        padding: '10px 12px', fontSize: '12px', color: '#92400e', lineHeight: '1.5',
+      });
+      hipaaBanner.innerHTML = '<strong>⚠️ HIPAA Notice:</strong> Do not include patient names, dates of birth, SSNs, medical record numbers, or any other protected health information (PHI) in this submission.';
+      wrap.appendChild(hipaaBanner);
+    }
+
     // Screenshot preview
     if (state.captureDataUrl) {
       var preview = el('img', '');
@@ -999,8 +1015,8 @@
     descLabel.appendChild(descTA);
     wrap.appendChild(descLabel);
 
-    // Include Console checkbox — shown for all non-console snaps, unchecked by default
-    if (state.captureType !== MODES.CONSOLE) {
+    // Include Console checkbox — hidden for HIPAA plugins; shown for all other non-console snaps
+    if (state.captureType !== MODES.CONSOLE && !state.hipaaEnabled) {
       var consoleChk = el('label', '');
       css(consoleChk, {
         display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer',
@@ -1046,9 +1062,12 @@
     submitBtn.addEventListener('click', function () {
       var category = catSelect.value;
       var description = descTA.value.trim();
-      var attachConsole = true;
-      var chkEl = document.getElementById('s4k-attach-console');
-      if (chkEl) attachConsole = chkEl.checked;
+      var attachConsole = false; // default off for HIPAA
+      if (!state.hipaaEnabled) {
+        var chkEl = document.getElementById('s4k-attach-console');
+        if (chkEl) attachConsole = chkEl.checked;
+        else attachConsole = true;
+      }
 
       state.formData = { category: category, description: description, priority: prioSelect.value };
       state.attachConsole = attachConsole;
@@ -1091,61 +1110,70 @@
 
   // ── Snap submission ────────────────────────────────────────────────────────
 
-  function submitSnap() {
-    // Ensure a fresh Firebase ID token before attempting any upload or submit
-    ensureFreshToken().then(function () {
-      // Upload screenshot to Firebase Storage if needed
-      var uploadPromise = Promise.resolve(null);
+  function buildPayload(screenshotUrl, recordingUrl, extraFields) {
+    var shapes = state.annotations.map(function (s) {
+      return {
+        tool: s.tool, color: s.color, points: s.points || null,
+        x: s.x, y: s.y, width: s.w, height: s.h,
+        x2: s.x2, y2: s.y2, text: s.text || null,
+      };
+    });
+    var context = {
+      pageUrl: global.location.href,
+      pageTitle: document.title,
+      userAgent: navigator.userAgent,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+      scrollX: window.scrollX,
+      scrollY: window.scrollY,
+      knackUserId: state.knackUser && (state.knackUser.id || state.knackUser.email),
+      knackUserName: state.knackUser && state.knackUser.name,
+      knackRole: state.knackRole,
+    };
+    var payload = {
+      type: state.captureType || MODES.FULL,
+      screenshotUrl: screenshotUrl || null,
+      recordingUrl: recordingUrl || null,
+      annotationData: shapes.length ? { shapes: shapes } : null,
+      consoleErrors: (state.attachConsole || state.captureType === MODES.CONSOLE) ? state.consoleErrors.slice() : [],
+      formData: state.formData || {},
+      context: context,
+      priority: (state.formData && state.formData.priority) || 'medium',
+    };
+    if (extraFields) {
+      Object.keys(extraFields).forEach(function (k) { payload[k] = extraFields[k]; });
+    }
+    return payload;
+  }
 
+  function submitSnap() {
+    ensureFreshToken().then(function () {
+      var isHipaaScreenshot = state.hipaaEnabled && state.captureDataUrl && !state.captureIsVideo;
+
+      if (isHipaaScreenshot) {
+        // HIPAA path: submit snap doc first (no screenshotUrl), then upload to staging
+        // The Storage trigger will DLP-scan and move to the live path.
+        var payload = buildPayload(null, null, { hipaaScreenshot: true });
+        return req('POST', FUNCTIONS_BASE + '/submitSnap', payload, state.idToken)
+          .then(function (result) {
+            var snapId = result && result.id;
+            if (!snapId) throw new Error('submitSnap did not return a snap ID');
+            return uploadStagingScreenshot(state.captureDataUrl, snapId);
+          });
+      }
+
+      // Non-HIPAA path: upload first, then submit
+      var uploadPromise = Promise.resolve(null);
       if (state.captureDataUrl && !state.captureIsVideo) {
         uploadPromise = uploadScreenshot(state.captureDataUrl);
       } else if (state.captureBlob && state.captureIsVideo) {
         uploadPromise = uploadRecording(state.captureBlob);
       }
-
-      return uploadPromise;
-    }).then(function (mediaUrl) {
-      var screenshotUrl = state.captureIsVideo ? null : mediaUrl;
-      var recordingUrl = state.captureIsVideo ? mediaUrl : null;
-
-      // Flatten annotations to plain shapes array
-      var shapes = state.annotations.map(function (s) {
-        return {
-          tool: s.tool,
-          color: s.color,
-          points: s.points || null,
-          x: s.x, y: s.y,
-          width: s.w, height: s.h,
-          x2: s.x2, y2: s.y2,
-          text: s.text || null,
-        };
+      return uploadPromise.then(function (mediaUrl) {
+        var screenshotUrl = state.captureIsVideo ? null : mediaUrl;
+        var recordingUrl = state.captureIsVideo ? mediaUrl : null;
+        return req('POST', FUNCTIONS_BASE + '/submitSnap', buildPayload(screenshotUrl, recordingUrl), state.idToken);
       });
-
-      var context = {
-        pageUrl: global.location.href,
-        pageTitle: document.title,
-        userAgent: navigator.userAgent,
-        viewportWidth: window.innerWidth,
-        viewportHeight: window.innerHeight,
-        scrollX: window.scrollX,
-        scrollY: window.scrollY,
-        knackUserId: state.knackUser && (state.knackUser.id || state.knackUser.email),
-        knackUserName: state.knackUser && state.knackUser.name,
-        knackRole: state.knackRole,
-      };
-
-      var payload = {
-        type: state.captureType || MODES.FULL,
-        screenshotUrl: screenshotUrl,
-        recordingUrl: recordingUrl,
-        annotationData: shapes.length ? { shapes: shapes } : null,
-        consoleErrors: (state.attachConsole || state.captureType === MODES.CONSOLE) ? state.consoleErrors.slice() : [],
-        formData: state.formData || {},
-        context: context,
-        priority: (state.formData && state.formData.priority) || 'medium',
-      };
-
-      return req('POST', FUNCTIONS_BASE + '/submitSnap', payload, state.idToken);
     }).then(function () {
       state.step = 'done';
       renderDrawer();
@@ -1154,6 +1182,24 @@
       renderDrawer();
       setTimeout(function () { alert('Failed to send snap: ' + e.message); }, 100);
     });
+  }
+
+  function uploadStagingScreenshot(dataUrl, snapId) {
+    // Upload to staging path named after snap ID — Cloud Function will DLP and move to live path
+    var config = state.config;
+    var path = 'snap_screenshots_staging/' + config.tenantId + '/' + snapId + '.png';
+    var storageBucket = 'snap4knack2.firebasestorage.app';
+    var uploadUrl = 'https://firebasestorage.googleapis.com/v0/b/' + storageBucket + '/o?uploadType=media&name=' + encodeURIComponent(path);
+    return fetch(dataUrl)
+      .then(function (r) { return r.blob(); })
+      .then(function (blob) {
+        return fetch(uploadUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'image/png', 'Authorization': 'Bearer ' + state.idToken },
+          body: blob,
+        });
+      })
+      .then(function (r) { return r.json(); });
   }
 
   function uploadScreenshot(dataUrl) {

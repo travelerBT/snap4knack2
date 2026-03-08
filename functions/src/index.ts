@@ -1,19 +1,89 @@
 import * as functions from "firebase-functions/v2";
+import { onSchedule } from "firebase-functions/v2/scheduler";
+import { onObjectFinalized } from "firebase-functions/v2/storage";
 import * as admin from "firebase-admin";
 import { SecretManagerServiceClient } from "@google-cloud/secret-manager";
+import { DlpServiceClient, protos as dlpProtos } from "@google-cloud/dlp";
 import sgMail from "@sendgrid/mail";
 import axios from "axios";
+import { randomUUID } from "crypto";
 import { snapNotificationEmail, criticalSnapEmail, clientInvitationEmail, commentNotificationEmail, newTenantWelcomeEmail } from "./emailTemplates";
 
 admin.initializeApp();
 const db = admin.firestore();
 const auth = admin.auth();
 const secretClient = new SecretManagerServiceClient();
+const dlpClient = new DlpServiceClient();
 
 const PROJECT_ID = "snap4knack2";
+const STORAGE_BUCKET = "snap4knack2.firebasestorage.app";
 const APP_DOMAIN = "https://snap4knack2.web.app";
 const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY || "";
 const SENDGRID_FROM = "info@finemountainconsulting.com";
+
+// HIPAA infoTypes scanned in both text and images
+const HIPAA_INFO_TYPES: dlpProtos.google.privacy.dlp.v2.IInfoType[] = [
+  { name: "PERSON_NAME" },
+  { name: "DATE_OF_BIRTH" },
+  { name: "US_SOCIAL_SECURITY_NUMBER" },
+  { name: "PHONE_NUMBER" },
+  { name: "EMAIL_ADDRESS" },
+  { name: "MEDICAL_RECORD_NUMBER" },
+  { name: "US_HEALTHCARE_NPI" },
+];
+
+/** DLP text redaction — replaces PHI tokens inline with [TYPE] placeholders */
+async function dlpRedactText(text: string): Promise<string> {
+  if (!text || text.length < 3) return text;
+  try {
+    const [response] = await dlpClient.deidentifyContent({
+      parent: `projects/${PROJECT_ID}/locations/global`,
+      deidentifyConfig: {
+        infoTypeTransformations: {
+          transformations: [{
+            infoTypes: HIPAA_INFO_TYPES,
+            primitiveTransformation: { replaceWithInfoTypeConfig: {} },
+          }],
+        },
+      },
+      item: { value: text },
+    });
+    return response.item?.value ?? text;
+  } catch (e) {
+    console.error("[DLP] Text redaction error:", e);
+    return text; // fail-open: return original rather than losing data
+  }
+}
+
+/** DLP image redaction — black-boxes PHI regions detected via OCR; returns redacted PNG bytes */
+async function dlpRedactImage(imageBytes: Buffer): Promise<Buffer> {
+  try {
+    const [response] = await dlpClient.redactImage({
+      parent: `projects/${PROJECT_ID}/locations/global`,
+      byteItem: {
+        type: dlpProtos.google.privacy.dlp.v2.ByteContentItem.BytesType.IMAGE_PNG,
+        data: imageBytes,
+      },
+      imageRedactionConfigs: HIPAA_INFO_TYPES.map((t) => ({ infoType: t })),
+    });
+    const redacted = response.redactedImage;
+    if (redacted && redacted.length > 0) return Buffer.from(redacted as Uint8Array);
+    return imageBytes; // no PHI found — return original
+  } catch (e) {
+    console.error("[DLP] Image redaction error:", e);
+    return imageBytes; // fail-open
+  }
+}
+
+/** Strip query-string parameters from a URL (removes potential PHI in query params) */
+function stripQueryParams(url: string): string {
+  try {
+    const u = new URL(url);
+    return u.origin + u.pathname;
+  } catch {
+    return url.split("?")[0];
+  }
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -336,37 +406,64 @@ export const submitSnap = functions.https.onRequest(
 
     const body = req.body as Record<string, unknown>;
 
+    // Fetch plugin doc to check hipaaEnabled
+    const pluginDoc = await db.collection("tenants").doc(tenantId).collection("snapPlugins").doc(pluginId).get();
+    const hipaaEnabled = pluginDoc.data()?.hipaaEnabled === true;
+    const retentionDays: number = hipaaEnabled ? 2555 : ((pluginDoc.data()?.retentionDays as number) ?? 365);
+
     // Sanitise/truncate caller-supplied fields to prevent oversized Firestore documents (M-03)
-    const consoleErrors = Array.isArray(body.consoleErrors)
-      ? (body.consoleErrors as unknown[]).slice(0, 100)
-      : [];
+    // For HIPAA: strip console errors entirely and scrub pageUrl query params
+    const consoleErrors = hipaaEnabled
+      ? []
+      : Array.isArray(body.consoleErrors)
+        ? (body.consoleErrors as unknown[]).slice(0, 100)
+        : [];
+
     const annotationDataRaw = body.annotationData;
     const annotationData = annotationDataRaw != null &&
       JSON.stringify(annotationDataRaw).length <= 50_000
       ? annotationDataRaw
       : null;
-    const formData = body.formData && typeof body.formData === "object"
+    const formDataRaw = body.formData && typeof body.formData === "object"
       ? Object.fromEntries(
           Object.entries(body.formData as Record<string, unknown>).slice(0, 50)
         )
       : {};
-    const context = body.context && typeof body.context === "object"
+
+    // HIPAA: DLP-redact description field and cap at 500 chars
+    if (hipaaEnabled && typeof formDataRaw.description === "string") {
+      formDataRaw.description = await dlpRedactText(formDataRaw.description.slice(0, 500));
+    }
+    const formData = formDataRaw;
+
+    const contextRaw = body.context && typeof body.context === "object"
       ? Object.fromEntries(
           Object.entries(body.context as Record<string, unknown>).slice(0, 20)
         )
       : {};
+    // HIPAA: strip query params from pageUrl
+    if (hipaaEnabled && typeof contextRaw.pageUrl === "string") {
+      contextRaw.pageUrl = stripQueryParams(contextRaw.pageUrl);
+    }
+    const context = contextRaw;
+
     const ALLOWED_PRIORITIES = ["low", "medium", "high", "critical"];
     const priority = ALLOWED_PRIORITIES.includes(body.priority as string)
       ? (body.priority as string)
       : "medium";
 
-    const submission = {
+    // For HIPAA snaps submitted with a screenshot, the widget sends hipaaScreenshot=true
+    // and NO screenshotUrl; the screenshot is uploaded to the staging path after this response.
+    const hipaaScreenshot = hipaaEnabled && body.hipaaScreenshot === true;
+
+    const submission: Record<string, unknown> = {
       tenantId,
       pluginId,
       knackUserId: knackUserId || null,
       knackUserRole: knackUserRole || null,
       type: body.type || "full",
-      screenshotUrl: body.screenshotUrl || null,
+      screenshotUrl: hipaaScreenshot ? null : (body.screenshotUrl || null),
+      screenshotStatus: hipaaScreenshot ? "scanning" : null,
       recordingUrl: body.recordingUrl || null,
       annotationData,
       consoleErrors,
@@ -374,6 +471,8 @@ export const submitSnap = functions.https.onRequest(
       context,
       priority,
       status: "new",
+      hipaaEnabled,
+      retentionDays,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     };
 
@@ -411,6 +510,7 @@ export const onSnapCreated = functions.firestore.onDocumentCreated(
     const tenantData = tenantDoc.data();
     const priority = snap.priority as string | undefined;
     const isCritical = priority === "critical";
+    const hipaaMode = pluginDoc.data()?.hipaaEnabled === true;
 
     // If not critical and notifyOnSnap is off, skip.
     if (!isCritical && !tenantData?.notifyOnSnap) return;
@@ -421,7 +521,8 @@ export const onSnapCreated = functions.firestore.onDocumentCreated(
     sgMail.setApiKey(key);
 
     const category = ((snap.formData as Record<string, unknown>)?.category as string) || "Snap";
-    const pageUrl = ((snap.context as Record<string, unknown>)?.pageUrl as string) || "";
+    const rawPageUrl = ((snap.context as Record<string, unknown>)?.pageUrl as string) || "";
+    const pageUrl = hipaaMode ? "" : rawPageUrl;
     const snapDashboardUrl = `${APP_DOMAIN}/snap-feed/${event.params.submissionId}`;
     const pluginName = he(pluginDoc.data()?.name || "Plugin");
 
@@ -436,6 +537,7 @@ export const onSnapCreated = functions.firestore.onDocumentCreated(
               category: he(category),
               pageUrl: he(pageUrl),
               dashboardUrl: snapDashboardUrl,
+              hipaaMode,
             }),
           })
         )
@@ -451,6 +553,7 @@ export const onSnapCreated = functions.firestore.onDocumentCreated(
               category: he(category),
               pageUrl: he(pageUrl),
               dashboardUrl: snapDashboardUrl,
+              hipaaMode,
             }),
           })
         )
@@ -475,8 +578,26 @@ export const onCommentCreated = functions.firestore.onDocumentCreated(
     if (!submissionDoc.exists) return;
     const submission = submissionDoc.data()!;
     const tenantId = submission.tenantId as string;
+    const pluginId = submission.pluginId as string;
     const snapNumber = submission.snapNumber as number | undefined;
     const category = ((submission.formData as Record<string, unknown>)?.category as string) || "Snap";
+
+    // Check HIPAA mode for this plugin
+    const pluginDoc = await db.collection("tenants").doc(tenantId).collection("snapPlugins").doc(pluginId).get();
+    const hipaaMode = pluginDoc.data()?.hipaaEnabled === true;
+
+    // HIPAA: DLP-redact comment text and update the doc before fan-out
+    const rawCommentText = (comment.text as string) || "";
+    let commentText = he(rawCommentText);
+    if (hipaaMode && rawCommentText) {
+      const redacted = await dlpRedactText(rawCommentText);
+      if (redacted !== rawCommentText) {
+        await db.collection("snap_submissions").doc(submissionId)
+          .collection("comments").doc(event.params.commentId)
+          .update({ text: redacted, dlpFlagged: true });
+        commentText = he(redacted);
+      }
+    }
 
     const authorUid = (comment.authorUid || comment.authorId) as string | undefined;
 
@@ -504,7 +625,7 @@ export const onCommentCreated = functions.firestore.onDocumentCreated(
     sgMail.setApiKey(key);
 
     const authorName = he((comment.authorName as string) || "Someone");
-    const commentText = he((comment.text as string) || "");
+    // commentText already set above (DLP-redacted if HIPAA)
 
     await Promise.all(
       Array.from(commenterUids).map(async (uid) => {
@@ -529,6 +650,7 @@ export const onCommentCreated = functions.firestore.onDocumentCreated(
             snapNumber,
             snapCategory: he(category),
             dashboardUrl: snapUrl,
+            hipaaMode,
           }),
         });
       })
@@ -789,7 +911,6 @@ export const revokeClientAccess = functions.https.onCall(
 );
 
 // ── contactForm ───────────────────────────────────────────────────────────────
-
 export const contactForm = functions.https.onRequest(
   { cors: true },
   async (req, res) => {
@@ -841,5 +962,124 @@ export const contactForm = functions.https.onRequest(
     });
 
     res.json({ success: true });
+  }
+);
+
+// ── onScreenshotStaged ────────────────────────────────────────────────────────
+// Storage trigger: fires when the widget uploads a HIPAA screenshot to the
+// staging bucket. Downloads the file, runs DLP image redaction, writes the
+// redacted PNG to the live path, updates the Firestore snap doc, then deletes
+// the staging file.
+
+export const onScreenshotStaged = onObjectFinalized(
+  { bucket: STORAGE_BUCKET },
+  async (event) => {
+    const filePath = event.data.name; // e.g. "snap_screenshots_staging/{tenantId}/{snapId}.png"
+    if (!filePath || !filePath.startsWith("snap_screenshots_staging/")) return;
+
+    const parts = filePath.split("/");
+    if (parts.length !== 3) return;
+    const tenantId = parts[1];
+    const fileName = parts[2]; // "{snapId}.png"
+    const snapId = fileName.replace(/\.png$/i, "");
+    if (!snapId) return;
+
+    const bucket = admin.storage().bucket(STORAGE_BUCKET);
+    const stagingFile = bucket.file(filePath);
+
+    try {
+      // Download staged image
+      const [imageBytes] = await stagingFile.download();
+
+      // DLP image redaction
+      const redactedBytes = await dlpRedactImage(imageBytes);
+
+      // Upload to live path
+      const livePath = `snap_screenshots/${tenantId}/${fileName}`;
+      const liveFile = bucket.file(livePath);
+      await liveFile.save(redactedBytes, { contentType: "image/png", resumable: false });
+
+      // Set a download token so the URL is stable (same pattern as the widget)
+      const token = randomUUID();
+      await liveFile.setMetadata({ metadata: { firebaseStorageDownloadTokens: token } });
+
+      const screenshotUrl =
+        `https://firebasestorage.googleapis.com/v0/b/${STORAGE_BUCKET}/o/` +
+        `${encodeURIComponent(livePath)}?alt=media&token=${token}`;
+
+      // Update Firestore snap doc
+      await db.collection("snap_submissions").doc(snapId).update({
+        screenshotUrl,
+        screenshotStatus: "ready",
+      });
+
+      // Delete staging file
+      await stagingFile.delete();
+    } catch (e) {
+      console.error(`[onScreenshotStaged] Error processing ${filePath}:`, e);
+      // Mark scan failed so UI shows a clear error state
+      await db.collection("snap_submissions").doc(snapId).update({
+        screenshotStatus: "scan_failed",
+        scanError: e instanceof Error ? e.message : String(e),
+      }).catch(() => {});
+    }
+  }
+);
+
+// ── purgeExpiredSnaps ─────────────────────────────────────────────────────────
+// Nightly scheduled function: hard-deletes snap_submissions (+ comments subcollection
+// + Storage files) older than the plugin's retentionDays.
+// Non-HIPAA default: 365 days. HIPAA: 2555 days (7 years).
+
+export const purgeExpiredSnaps = onSchedule(
+  { schedule: "every 24 hours", timeZone: "America/Chicago" },
+  async () => {
+    const now = Date.now();
+    const minCutoff = admin.firestore.Timestamp.fromDate(
+      new Date(now - 365 * 24 * 60 * 60 * 1000)
+    );
+
+    // Only fetch docs older than the minimum retention window (365 days)
+    const snapshot = await db.collection("snap_submissions")
+      .where("createdAt", "<", minCutoff)
+      .get();
+
+    const bucket = admin.storage().bucket(STORAGE_BUCKET);
+    let purged = 0;
+
+    for (const snapDoc of snapshot.docs) {
+      const data = snapDoc.data();
+      const retention: number = (data.retentionDays as number) ?? 365;
+      const createdAt = (data.createdAt as admin.firestore.Timestamp).toDate();
+      const ageMs = now - createdAt.getTime();
+      const retentionMs = retention * 24 * 60 * 60 * 1000;
+      if (ageMs <= retentionMs) continue; // not yet expired
+
+      const snapId = snapDoc.id;
+      const tenantId = data.tenantId as string;
+
+      try {
+        // Delete comments subcollection
+        const commentsSnap = await db.collection("snap_submissions").doc(snapId).collection("comments").get();
+        const batch = db.batch();
+        commentsSnap.docs.forEach((c) => batch.delete(c.ref));
+        batch.delete(snapDoc.ref);
+        await batch.commit();
+
+        // Delete Storage files (best-effort)
+        const filesToDelete = [
+          `snap_screenshots/${tenantId}/${snapId}.png`,
+          `snap_recordings/${tenantId}/${snapId}.webm`,
+          `snap_recordings/${tenantId}/${snapId}.mp4`,
+        ];
+        await Promise.allSettled(
+          filesToDelete.map((p) => bucket.file(p).delete())
+        );
+        purged++;
+      } catch (e) {
+        console.error(`[purgeExpiredSnaps] Failed to purge snap ${snapId}:`, e);
+      }
+    }
+    console.log(`[purgeExpiredSnaps] Purged ${purged} expired snap(s).`);
   }
 );
