@@ -87,7 +87,7 @@ const steps = [
   { num: '4', title: 'Users Start Snapping', desc: 'Role-matched users see the floating button and can submit visual feedback instantly.' },
 ];
 
-const CACHE_BUST = '?v=1';
+const CACHE_BUST = '?v=3';
 
 const screenshots = [
   {
@@ -109,11 +109,6 @@ const screenshots = [
     src: `/screenshots/snap-plugins.png${CACHE_BUST}`,
     label: 'Snap Plugins',
     caption: 'Configure widget position, accent color, and role restrictions per plugin.',
-  },
-  {
-    src: `/screenshots/account.png${CACHE_BUST}`,
-    label: 'Account',
-    caption: 'Manage your profile, team members, and billing settings.',
   },
 ];
 
