@@ -58,11 +58,12 @@ export default function SnapPluginDetails() {
   useEffect(() => {
     if (!tenantId || !id) return;
     const load = async () => {
-      const [pluginDoc, invSnap, shareSnap, tenantUsersSnap] = await Promise.all([
+      const getAvailableTenantsFunc = httpsCallable<object, { uid: string; email: string; displayName: string }[]>(functions, 'getAvailableTenants');
+      const [pluginDoc, invSnap, shareSnap, tenantsResult] = await Promise.all([
         getDoc(doc(db, 'tenants', tenantId, 'snapPlugins', id)),
         getDocs(query(collection(db, 'client_invitations'), where('tenantId', '==', tenantId))),
         getDocs(query(collection(db, 'tenant_shares'), where('ownerTenantId', '==', tenantId))),
-        getDocs(query(collection(db, 'users'), where('roles', 'array-contains', 'tenant'))),
+        getAvailableTenantsFunc({}),
       ]);
       if (pluginDoc.exists()) {
         const p = { id: pluginDoc.id, ...pluginDoc.data() } as SnapPlugin;
@@ -81,14 +82,8 @@ export default function SnapPluginDetails() {
       const activeShareEmails = new Set(
         pluginShares.filter((s) => s.status === 'active').map((s) => s.grantedEmail)
       );
-      const tenantOptions = tenantUsersSnap.docs
-        .filter((d) => d.id !== tenantId && !activeShareEmails.has(d.data().email as string))
-        .map((d) => ({
-          uid: d.id,
-          email: d.data().email as string,
-          displayName: (d.data().displayName as string) || (d.data().email as string),
-        }))
-        .sort((a, b) => a.displayName.localeCompare(b.displayName));
+      const tenantOptions = (tenantsResult.data || [])
+        .filter((t) => !activeShareEmails.has(t.email));
       setAvailableTenants(tenantOptions);
       setLoading(false);
     };

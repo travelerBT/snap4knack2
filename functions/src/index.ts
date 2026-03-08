@@ -652,6 +652,36 @@ export const revokeTenantShare = functions.https.onCall(
   }
 );
 
+// ── getAvailableTenants ───────────────────────────────────────────────────────
+
+export const getAvailableTenants = functions.https.onCall(
+  { enforceAppCheck: false },
+  async (request) => {
+    if (!request.auth) throw new functions.https.HttpsError("unauthenticated", "Must be signed in.");
+
+    // Verify caller is a tenant or admin
+    const callerDoc = await db.collection("users").doc(request.auth.uid).get();
+    const callerRoles: string[] = (callerDoc.data()?.roles as string[]) || [];
+    if (!callerRoles.includes("tenant") && !callerRoles.includes("admin")) {
+      throw new functions.https.HttpsError("permission-denied", "Only tenants can list other tenants.");
+    }
+
+    const snapshot = await db.collection("users").where("roles", "array-contains", "tenant").get();
+    return snapshot.docs
+      .filter((d) => d.id !== request.auth!.uid)
+      .map((d) => ({
+        uid: d.id,
+        email: (d.data().email as string) || "",
+        displayName:
+          (d.data().displayName as string) ||
+          (d.data().companyName as string) ||
+          (d.data().email as string) ||
+          d.id,
+      }))
+      .sort((a, b) => a.displayName.localeCompare(b.displayName));
+  }
+);
+
 // ── revokeClientAccess ────────────────────────────────────────────────────────
 
 export const revokeClientAccess = functions.https.onCall(
