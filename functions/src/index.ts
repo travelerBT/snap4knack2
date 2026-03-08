@@ -655,7 +655,7 @@ export const revokeTenantShare = functions.https.onCall(
 // ── getAvailableTenants ───────────────────────────────────────────────────────
 
 export const getAvailableTenants = functions.https.onCall(
-  { enforceAppCheck: false },
+  { enforceAppCheck: false, invoker: 'public' },
   async (request) => {
     if (!request.auth) throw new functions.https.HttpsError("unauthenticated", "Must be signed in.");
 
