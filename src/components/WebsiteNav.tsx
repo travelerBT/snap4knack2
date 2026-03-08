@@ -28,6 +28,9 @@ export default function WebsiteNav() {
             </NavLink>
           </div>
           <div className="hidden md:flex items-center gap-6">
+            <NavLink to="/faq" className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors">
+              FAQ
+            </NavLink>
             <NavLink to="/login" className="text-sm font-medium text-blue-600 hover:text-blue-700 border border-blue-600 rounded-lg px-4 py-2 hover:bg-blue-50 transition-colors">
               Sign in
             </NavLink>
@@ -41,6 +44,7 @@ export default function WebsiteNav() {
       </div>
       {mobileOpen && (
         <div className="md:hidden border-t border-gray-200 px-4 py-4">
+          <NavLink to="/faq" className="block text-sm font-medium text-gray-600 py-2">FAQ</NavLink>
           <NavLink to="/login" className="block text-sm font-medium text-blue-600 py-2">Sign in</NavLink>
         </div>
       )}

@@ -9,6 +9,7 @@ import Home from './pages/Home';
 import Login from './pages/Login';
 import LegalPage from './pages/LegalPage';
 import AcceptInvite from './pages/AcceptInvite';
+import FAQ from './pages/FAQ';
 
 // Tenant / Admin pages
 import Dashboard from './pages/Dashboard';
@@ -60,6 +61,7 @@ function AppRoutes() {
       {/* Public routes */}
       <Route path="/home" element={<Home />} />
       <Route path="/login" element={<Login />} />
+      <Route path="/faq" element={<FAQ />} />
       <Route path="/legal/:page" element={<LegalPage />} />
       <Route path="/accept-invite" element={<AcceptInvite />} />
 

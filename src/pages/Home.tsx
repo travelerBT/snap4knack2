@@ -390,6 +390,7 @@ export default function Home() {
           <p className="text-sm">© {new Date().getFullYear()} Fine Mountain Consulting LLC</p>
           <div className="flex gap-4 text-sm">
             <a href="#contact" className="hover:text-white transition-colors">Contact</a>
+            <Link to="/faq" className="hover:text-white transition-colors">FAQ</Link>
             <a href="/legal/privacy-policy" className="hover:text-white transition-colors">Privacy</a>
             <a href="/legal/terms-of-service" className="hover:text-white transition-colors">Terms</a>
           </div>
