@@ -94,6 +94,41 @@ export function clientInvitationEmail(opts: {
   };
 }
 
+export function newTenantWelcomeEmail(opts: {
+  recipientEmail: string;
+  companyName: string;
+  displayName: string;
+  loginUrl: string;
+}): { to: string; subject: string; html: string } {
+  return {
+    to: opts.recipientEmail,
+    subject: `Welcome to Snap4Knack — Set up your account`,
+    html: `
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
+        <div style="background:#2563eb;padding:16px 24px;border-radius:8px 8px 0 0">
+          <h1 style="color:#fff;margin:0;font-size:20px">👋 Welcome to Snap4Knack</h1>
+        </div>
+        <div style="background:#f9fafb;padding:24px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px">
+          <p style="margin:0 0 12px;color:#374151">Hi ${opts.displayName},</p>
+          <p style="margin:0 0 12px;color:#374151">
+            Your Snap4Knack account has been created for <strong>${opts.companyName}</strong>.
+          </p>
+          <p style="margin:0 0 20px;color:#374151">
+            Click the button below to set your password and log in for the first time.
+          </p>
+          <a href="${opts.loginUrl}" style="background:#2563eb;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600;display:inline-block">
+            Set Your Password →
+          </a>
+          <p style="margin-top:16px;font-size:12px;color:#6b7280">This link expires in 24 hours. If you didn't expect this email, you can safely ignore it.</p>
+        </div>
+        <p style="margin-top:16px;font-size:12px;color:#9ca3af;text-align:center">
+          Snap4Knack · Fine Mountain Consulting LLC
+        </p>
+      </div>
+    `,
+  };
+}
+
 export function commentNotificationEmail(opts: {
   recipientEmail: string;
   authorName: string;

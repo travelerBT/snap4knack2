@@ -3,7 +3,7 @@ import * as admin from "firebase-admin";
 import { SecretManagerServiceClient } from "@google-cloud/secret-manager";
 import sgMail from "@sendgrid/mail";
 import axios from "axios";
-import { snapNotificationEmail, criticalSnapEmail, clientInvitationEmail, commentNotificationEmail } from "./emailTemplates";
+import { snapNotificationEmail, criticalSnapEmail, clientInvitationEmail, commentNotificationEmail, newTenantWelcomeEmail } from "./emailTemplates";
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -649,6 +649,86 @@ export const revokeTenantShare = functions.https.onCall(
     });
 
     return { success: true };
+  }
+);
+
+// ── createTenant ──────────────────────────────────────────────────────────────
+
+export const createTenant = functions.https.onCall(
+  { enforceAppCheck: false, invoker: "public" },
+  async (request) => {
+    if (!request.auth) throw new functions.https.HttpsError("unauthenticated", "Must be signed in.");
+
+    // Verify caller is admin
+    const callerDoc = await db.collection("users").doc(request.auth.uid).get();
+    const callerRoles: string[] = (callerDoc.data()?.roles as string[]) || [];
+    if (!callerRoles.includes("admin")) {
+      throw new functions.https.HttpsError("permission-denied", "Only admins can create tenants.");
+    }
+
+    const { email, companyName, displayName } = request.data as {
+      email: string;
+      companyName: string;
+      displayName?: string;
+    };
+    if (!email?.trim() || !companyName?.trim()) {
+      throw new functions.https.HttpsError("invalid-argument", "Email and company name are required.");
+    }
+
+    // Check if user already exists
+    try {
+      await auth.getUserByEmail(email.trim());
+      throw new functions.https.HttpsError("already-exists", "A user with this email already exists.");
+    } catch (err: unknown) {
+      const fbErr = err as { code?: string };
+      if (fbErr.code !== "auth/user-not-found") throw err;
+    }
+
+    // Create auth user with a temp password — immediately generate a reset link
+    const tempPassword = `Tmp_${Math.random().toString(36).slice(2, 10)}!`;
+    const effectiveName = displayName?.trim() || companyName.trim();
+    const userRecord = await auth.createUser({
+      email: email.trim(),
+      password: tempPassword,
+      displayName: effectiveName,
+    });
+    const uid = userRecord.uid;
+
+    // Create user doc
+    await db.collection("users").doc(uid).set({
+      id: uid,
+      uid,
+      email: email.trim(),
+      displayName: effectiveName,
+      role: "tenant",
+      roles: ["tenant"],
+      tenantId: uid,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    // Create tenant doc
+    await db.collection("tenants").doc(uid).set({
+      ownerId: uid,
+      companyName: companyName.trim(),
+      email: email.trim(),
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    // Generate password-reset link so user sets their own password on first login
+    const resetLink = await auth.generatePasswordResetLink(email.trim());
+
+    // Send welcome email
+    const sgKey = await getSendGridKey();
+    sgMail.setApiKey(sgKey);
+    const msg = newTenantWelcomeEmail({
+      recipientEmail: email.trim(),
+      companyName: companyName.trim(),
+      displayName: effectiveName,
+      loginUrl: resetLink,
+    });
+    await sgMail.send({ from: SENDGRID_FROM, to: msg.to, subject: msg.subject, html: msg.html });
+
+    return { uid, email: email.trim(), companyName: companyName.trim() };
   }
 );
 

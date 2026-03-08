@@ -115,6 +115,15 @@ export default function Layout() {
                         <UserCircleIcon className="h-4 w-4" />
                         Account
                       </button>
+                      {isAdmin && (
+                        <button
+                          onClick={() => { navigate('/admin'); setUserMenuOpen(false); }}
+                          className="flex items-center gap-2 w-full px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                        >
+                          <ShieldCheckIcon className="h-4 w-4" />
+                          Admin
+                        </button>
+                      )}
                       <div className="border-t border-gray-100 mt-1 pt-1">
                         <button
                           onClick={handleLogout}
