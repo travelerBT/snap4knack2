@@ -660,8 +660,14 @@ export const getAvailableTenants = functions.https.onCall(
     if (!request.auth) throw new functions.https.HttpsError("unauthenticated", "Must be signed in.");
 
     // Verify caller is a tenant or admin
+    // Support legacy docs that have role (string) instead of roles (array)
     const callerDoc = await db.collection("users").doc(request.auth.uid).get();
-    const callerRoles: string[] = (callerDoc.data()?.roles as string[]) || [];
+    const callerData = callerDoc.data() || {};
+    const callerRoles: string[] = Array.isArray(callerData.roles)
+      ? (callerData.roles as string[])
+      : callerData.role
+      ? [callerData.role as string]
+      : [];
     if (!callerRoles.includes("tenant") && !callerRoles.includes("admin")) {
       throw new functions.https.HttpsError("permission-denied", "Only tenants can list other tenants.");
     }
