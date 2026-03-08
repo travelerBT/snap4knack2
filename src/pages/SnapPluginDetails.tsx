@@ -50,6 +50,7 @@ export default function SnapPluginDetails() {
 
   // Sharing state
   const [tenantShares, setTenantShares] = useState<TenantShare[]>([]);
+  const [availableTenants, setAvailableTenants] = useState<{ uid: string; email: string; displayName: string }[]>([]);
   const [shareEmail, setShareEmail] = useState('');
   const [sharing, setSharing] = useState(false);
   const [revokeShareConfirm, setRevokeShareConfirm] = useState<{ open: boolean; shareId: string }>({ open: false, shareId: '' });
@@ -57,10 +58,11 @@ export default function SnapPluginDetails() {
   useEffect(() => {
     if (!tenantId || !id) return;
     const load = async () => {
-      const [pluginDoc, invSnap, shareSnap] = await Promise.all([
+      const [pluginDoc, invSnap, shareSnap, tenantUsersSnap] = await Promise.all([
         getDoc(doc(db, 'tenants', tenantId, 'snapPlugins', id)),
         getDocs(query(collection(db, 'client_invitations'), where('tenantId', '==', tenantId))),
         getDocs(query(collection(db, 'tenant_shares'), where('ownerTenantId', '==', tenantId))),
+        getDocs(query(collection(db, 'users'), where('roles', 'array-contains', 'tenant'))),
       ]);
       if (pluginDoc.exists()) {
         const p = { id: pluginDoc.id, ...pluginDoc.data() } as SnapPlugin;
@@ -76,6 +78,18 @@ export default function SnapPluginDetails() {
         .filter((d) => d.data().pluginId === id)
         .map((d) => ({ id: d.id, ...d.data() } as TenantShare));
       setTenantShares(pluginShares);
+      const activeShareEmails = new Set(
+        pluginShares.filter((s) => s.status === 'active').map((s) => s.grantedEmail)
+      );
+      const tenantOptions = tenantUsersSnap.docs
+        .filter((d) => d.id !== tenantId && !activeShareEmails.has(d.data().email as string))
+        .map((d) => ({
+          uid: d.id,
+          email: d.data().email as string,
+          displayName: (d.data().displayName as string) || (d.data().email as string),
+        }))
+        .sort((a, b) => a.displayName.localeCompare(b.displayName));
+      setAvailableTenants(tenantOptions);
       setLoading(false);
     };
     load();
@@ -189,6 +203,7 @@ export default function SnapPluginDetails() {
         createdAt: serverTimestamp() as TenantShare['createdAt'],
       };
       setTenantShares((prev) => [newShare, ...prev]);
+      setAvailableTenants((prev) => prev.filter((t) => t.email !== result.data.grantedEmail));
       setShareEmail('');
       setModal({ open: true, type: 'success', title: 'Feed shared', message: `${result.data.grantedCompanyName} now has full access to this snap feed.` });
     } catch (err: unknown) {
@@ -365,6 +380,7 @@ s.onload=function(){Snap4KnackLoader.init({
       {activeTab === 'Sharing' && (
         <SharingTab
           shares={tenantShares}
+          tenants={availableTenants}
           shareEmail={shareEmail}
           setShareEmail={setShareEmail}
           onShare={handleShare}
@@ -666,8 +682,9 @@ function PortalTab({ invitations, inviteEmail, setInviteEmail, onInvite, invitin
 }
 // ── Sharing Tab ───────────────────────────────────────────────────────────────
 
-function SharingTab({ shares, shareEmail, setShareEmail, onShare, sharing, onRevoke }: {
+function SharingTab({ shares, tenants, shareEmail, setShareEmail, onShare, sharing, onRevoke }: {
   shares: TenantShare[];
+  tenants: { uid: string; email: string; displayName: string }[];
   shareEmail: string;
   setShareEmail: (v: string) => void;
   onShare: () => void;
@@ -679,26 +696,32 @@ function SharingTab({ shares, shareEmail, setShareEmail, onShare, sharing, onRev
       <div className="bg-white shadow rounded-lg p-6">
         <h3 className="text-base font-semibold text-gray-900 mb-1">Share with another tenant</h3>
         <p className="text-sm text-gray-500 mb-4">
-          Enter the email of an existing Snap4Knack tenant account. They will get full access to view, triage, comment on, and reorder all snap submissions for this plugin — the same as the owner.
+          Select an existing Snap4Knack tenant account. They will get full access to view, triage, comment on, and reorder all snap submissions for this plugin — the same as the owner.
         </p>
-        <div className="flex gap-3">
-          <input
-            type="email"
-            value={shareEmail}
-            onChange={(e) => setShareEmail(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && onShare()}
-            placeholder="tenant@company.com"
-            className="flex-1 rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-          />
-          <button
-            onClick={onShare}
-            disabled={sharing || !shareEmail.trim()}
-            className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg disabled:opacity-50"
-          >
-            <UsersIcon className="h-4 w-4" />
-            {sharing ? 'Sharing…' : 'Share Feed'}
-          </button>
-        </div>
+        {tenants.length === 0 ? (
+          <p className="text-sm text-gray-400 italic">No other tenant accounts available to share with.</p>
+        ) : (
+          <div className="flex gap-3">
+            <select
+              value={shareEmail}
+              onChange={(e) => setShareEmail(e.target.value)}
+              className="flex-1 rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+            >
+              <option value="">Select a tenant…</option>
+              {tenants.map((t) => (
+                <option key={t.uid} value={t.email}>{t.displayName} ({t.email})</option>
+              ))}
+            </select>
+            <button
+              onClick={onShare}
+              disabled={sharing || !shareEmail}
+              className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg disabled:opacity-50"
+            >
+              <UsersIcon className="h-4 w-4" />
+              {sharing ? 'Sharing…' : 'Share Feed'}
+            </button>
+          </div>
+        )}
       </div>
 
       <div className="bg-white shadow rounded-lg overflow-hidden">
