@@ -73,13 +73,17 @@ export default function AdminUsers() {
                     <p className="text-xs text-gray-400">{u.email}</p>
                   </td>
                   <td className="px-6 py-3">
-                    <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
-                      u.role === 'admin' ? 'bg-purple-100 text-purple-800' :
-                      u.role === 'tenant' ? 'bg-blue-100 text-blue-800' :
-                      'bg-gray-100 text-gray-600'
-                    }`}>
-                      {u.role}
-                    </span>
+                    <div className="flex flex-wrap gap-1">
+                      {(u.roles?.length ? u.roles : [u.role]).map((r) => (
+                        <span key={r} className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${
+                          r === 'admin' ? 'bg-purple-100 text-purple-800' :
+                          r === 'tenant' ? 'bg-blue-100 text-blue-800' :
+                          'bg-gray-100 text-gray-600'
+                        }`}>
+                          {r}
+                        </span>
+                      ))}
+                    </div>
                   </td>
                   <td className="px-6 py-3">
                     <span className={`text-xs ${u.suspended ? 'text-red-600 font-medium' : 'text-green-600'}`}>
