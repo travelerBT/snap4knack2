@@ -20,7 +20,6 @@ import SnapPluginDetails from './pages/SnapPluginDetails';
 import SnapFeed from './pages/SnapFeed';
 import SnapDetail from './pages/SnapDetail';
 import Account from './pages/Account';
-import ApiKeys from './pages/ApiKeys';
 import Admin from './pages/Admin';
 import AdminUsers from './pages/AdminUsers';
 
@@ -95,7 +94,6 @@ function AppRoutes() {
         <Route path="/snap-feed" element={<SnapFeed />} />
         <Route path="/snap-feed/:id" element={<SnapDetail />} />
         <Route path="/account" element={<Account />} />
-        <Route path="/api-keys" element={<ApiKeys />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="/admin/users" element={<AdminUsers />} />
       </Route>

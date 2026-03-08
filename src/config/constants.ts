@@ -12,7 +12,6 @@ export const ROUTES = {
   SNAP_FEED: '/snap-feed',
   SNAP_DETAIL: '/snap-feed/:id',
   ACCOUNT: '/account',
-  API_KEYS: '/api-keys',
   ADMIN: '/admin',
   ADMIN_USERS: '/admin/users',
   CLIENT_PORTAL: '/client-portal',
