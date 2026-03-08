@@ -15,6 +15,7 @@ import {
   CheckCircleIcon,
   HashtagIcon,
   ArrowsUpDownIcon,
+  ShieldCheckIcon,
 } from '@heroicons/react/24/outline';
 
 const features = [
@@ -285,6 +286,49 @@ export default function Home() {
         </div>
       </section>
 
+      {/* HIPAA teaser */}
+      <section className="py-20 px-4 bg-[#192f52]">
+        <div className="max-w-5xl mx-auto">
+          <div className="flex flex-col lg:flex-row items-center gap-12">
+            <div className="flex-1">
+              <div className="inline-flex items-center gap-2 bg-white/10 rounded-full px-4 py-1.5 text-sm font-medium text-blue-200 mb-5">
+                <ShieldCheckIcon className="h-4 w-4" />
+                Built for Healthcare
+              </div>
+              <h2 className="text-3xl font-bold text-white">HIPAA-compliant feedback for healthcare Knack apps</h2>
+              <p className="mt-4 text-blue-200 leading-relaxed">
+                Enable HIPAA mode on any plugin. Screenshots are held in a private staging area, scanned by Google Cloud DLP, and PHI is automatically redacted before the image is stored. Console logs are disabled, email notifications are sanitized, and all data is retained for the required 7 years.
+              </p>
+              <Link
+                to="/hipaa"
+                className="mt-8 inline-flex items-center gap-2 bg-white text-[#192f52] font-semibold px-6 py-3 rounded-lg hover:bg-blue-50 transition-colors"
+              >
+                Learn about HIPAA mode
+                <ArrowRightIcon className="h-4 w-4" />
+              </Link>
+            </div>
+            <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
+              {[
+                { label: 'DLP image redaction', sub: 'PHI regions black-boxed via OCR' },
+                { label: 'Text PHI scrubbing', sub: 'Description fields sanitized before storage' },
+                { label: '7-year retention', sub: 'HIPAA records retention built in' },
+                { label: 'Staging quarantine', sub: 'Images private until DLP scan completes' },
+                { label: 'Console lockout', sub: 'No sensitive logs captured or stored' },
+                { label: 'Sanitized emails', sub: 'Notifications never contain PHI' },
+              ].map(({ label, sub }) => (
+                <div key={label} className="flex items-start gap-3 bg-white/10 rounded-xl p-4">
+                  <CheckCircleIcon className="h-5 w-5 text-green-400 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-semibold text-white">{label}</p>
+                    <p className="text-xs text-blue-300 mt-0.5">{sub}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Contact */}
       <section id="contact" className="py-20 px-4 bg-gray-50">
         <div className="max-w-2xl mx-auto">
@@ -386,6 +430,7 @@ export default function Home() {
           <div className="flex gap-4 text-sm">
             <a href="#contact" className="hover:text-white transition-colors">Contact</a>
             <Link to="/faq" className="hover:text-white transition-colors">FAQ</Link>
+            <Link to="/hipaa" className="hover:text-white transition-colors">HIPAA</Link>
             <a href="/legal/privacy-policy" className="hover:text-white transition-colors">Privacy</a>
             <a href="/legal/terms-of-service" className="hover:text-white transition-colors">Terms</a>
           </div>

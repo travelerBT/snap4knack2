@@ -28,6 +28,9 @@ export default function WebsiteNav() {
             </NavLink>
           </div>
           <div className="hidden md:flex items-center gap-6">
+            <NavLink to="/hipaa" className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors">
+              HIPAA
+            </NavLink>
             <NavLink to="/faq" className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors">
               FAQ
             </NavLink>
@@ -44,6 +47,7 @@ export default function WebsiteNav() {
       </div>
       {mobileOpen && (
         <div className="md:hidden border-t border-gray-200 px-4 py-4">
+          <NavLink to="/hipaa" className="block text-sm font-medium text-gray-600 py-2">HIPAA</NavLink>
           <NavLink to="/faq" className="block text-sm font-medium text-gray-600 py-2">FAQ</NavLink>
           <NavLink to="/login" className="block text-sm font-medium text-blue-600 py-2">Sign in</NavLink>
         </div>
