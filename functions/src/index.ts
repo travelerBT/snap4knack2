@@ -536,6 +536,122 @@ export const onCommentCreated = functions.firestore.onDocumentCreated(
   }
 );
 
+// ── shareFeedWithTenant ──────────────────────────────────────────────────────
+
+export const shareFeedWithTenant = functions.https.onCall(
+  { enforceAppCheck: false },
+  async (request) => {
+    if (!request.auth) throw new functions.https.HttpsError("unauthenticated", "Must be signed in.");
+    const ownerTenantId = request.auth.uid;
+    const { email, pluginId } = request.data as { email: string; pluginId: string };
+    if (!email || !pluginId) {
+      throw new functions.https.HttpsError("invalid-argument", "email and pluginId are required.");
+    }
+
+    // Look up grantee by email in Firebase Auth — must have an existing account
+    let granteeAuthUser: admin.auth.UserRecord;
+    try {
+      granteeAuthUser = await auth.getUserByEmail(email);
+    } catch {
+      throw new functions.https.HttpsError("not-found", "No Snap4Knack account found for that email address.");
+    }
+    const granteeUid = granteeAuthUser.uid;
+
+    if (granteeUid === ownerTenantId) {
+      throw new functions.https.HttpsError("invalid-argument", "You cannot share a feed with yourself.");
+    }
+
+    // Verify grantee is a tenant (not a client-only account)
+    const granteeUserDoc = await db.collection("users").doc(granteeUid).get();
+    if (!granteeUserDoc.exists) {
+      throw new functions.https.HttpsError("not-found", "No Snap4Knack account found for that email address.");
+    }
+    const granteeData = granteeUserDoc.data()!;
+    const granteeRoles: string[] = granteeData.roles || ([granteeData.role].filter(Boolean) as string[]);
+    if (!granteeRoles.includes("tenant") && !granteeRoles.includes("admin")) {
+      throw new functions.https.HttpsError("permission-denied", "That account is not a Snap4Knack tenant account and cannot be granted feed access.");
+    }
+
+    // Verify caller owns the plugin
+    const pluginDoc = await db.collection("tenants").doc(ownerTenantId).collection("snapPlugins").doc(pluginId).get();
+    if (!pluginDoc.exists) {
+      throw new functions.https.HttpsError("not-found", "Plugin not found.");
+    }
+    const pluginName = (pluginDoc.data()?.name as string) || "Plugin";
+
+    // Check for an existing active share to prevent duplicates (filter client-side to avoid composite index)
+    const existingSnap = await db.collection("tenant_shares")
+      .where("ownerTenantId", "==", ownerTenantId)
+      .where("pluginId", "==", pluginId)
+      .get();
+    const alreadyActive = existingSnap.docs.some(
+      (d) => d.data().grantedTenantId === granteeUid && d.data().status === "active"
+    );
+    if (alreadyActive) {
+      throw new functions.https.HttpsError("already-exists", "This plugin is already shared with that account.");
+    }
+
+    // Get company names for display context
+    const ownerTenantDoc = await db.collection("tenants").doc(ownerTenantId).get();
+    const ownerCompanyName = (ownerTenantDoc.data()?.companyName as string) || "Unknown";
+
+    const granteeTenantDoc = await db.collection("tenants").doc(granteeUid).get();
+    const grantedCompanyName = granteeTenantDoc.exists
+      ? ((granteeTenantDoc.data()?.companyName as string) || (granteeData.displayName as string) || email)
+      : ((granteeData.displayName as string) || email);
+
+    // Write tenant_shares doc
+    const shareRef = await db.collection("tenant_shares").add({
+      ownerTenantId,
+      ownerCompanyName,
+      grantedTenantId: granteeUid,
+      grantedEmail: email,
+      grantedCompanyName,
+      pluginId,
+      pluginName,
+      status: "active",
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    // Grant access: arrayUnion pluginId onto grantee's sharedPluginAccess
+    await db.collection("users").doc(granteeUid).update({
+      sharedPluginAccess: admin.firestore.FieldValue.arrayUnion(pluginId),
+    });
+
+    return { shareId: shareRef.id, grantedEmail: email, grantedCompanyName, pluginName };
+  }
+);
+
+// ── revokeTenantShare ─────────────────────────────────────────────────────────
+
+export const revokeTenantShare = functions.https.onCall(
+  { enforceAppCheck: false },
+  async (request) => {
+    if (!request.auth) throw new functions.https.HttpsError("unauthenticated", "Must be signed in.");
+    const { shareId } = request.data as { shareId: string };
+
+    const shareDoc = await db.collection("tenant_shares").doc(shareId).get();
+    if (!shareDoc.exists) throw new functions.https.HttpsError("not-found", "Share not found.");
+    const share = shareDoc.data()!;
+
+    if (share.ownerTenantId !== request.auth.uid) {
+      throw new functions.https.HttpsError("permission-denied", "Not authorized.");
+    }
+
+    await shareDoc.ref.update({
+      status: "revoked",
+      revokedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    // Remove plugin access from grantee's sharedPluginAccess
+    await db.collection("users").doc(share.grantedTenantId).update({
+      sharedPluginAccess: admin.firestore.FieldValue.arrayRemove(share.pluginId),
+    });
+
+    return { success: true };
+  }
+);
+
 // ── revokeClientAccess ────────────────────────────────────────────────────────
 
 export const revokeClientAccess = functions.https.onCall(

@@ -35,6 +35,12 @@ service cloud.firestore {
         pluginId in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('clientAccess', []);
     }
 
+    function hasTenantShareAccess(pluginId) {
+      return isAuthenticated() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        pluginId in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('sharedPluginAccess', []);
+    }
+
     // Users collection
     match /users/{uid} {
       allow read: if isAuthenticated() && (request.auth.uid == uid || isAdmin());
@@ -50,7 +56,7 @@ service cloud.firestore {
       }
 
       match /snapPlugins/{pluginId} {
-        allow read: if isTenant(tenantId) || isAdmin() || clientHasPluginAccess(pluginId) || isWidget(tenantId, pluginId);
+        allow read: if isTenant(tenantId) || isAdmin() || clientHasPluginAccess(pluginId) || isWidget(tenantId, pluginId) || hasTenantShareAccess(pluginId);
         allow write: if isTenant(tenantId) || isAdmin();
       }
 
@@ -71,6 +77,7 @@ service cloud.firestore {
         isAdmin() ||
         resource.data.tenantId == request.auth.uid ||
         clientHasPluginAccess(resource.data.pluginId) ||
+        hasTenantShareAccess(resource.data.pluginId) ||
         (request.auth.token.get('role', '') == 'widget' && resource.data.knackUserId == request.auth.token.get('knackUserId', ''))
       );
       // Create: tenant must own the submission, or widget token claims must match (H-03)
@@ -85,27 +92,39 @@ service cloud.firestore {
       allow update: if isAuthenticated() && (
         isAdmin() ||
         resource.data.tenantId == request.auth.uid ||
-        clientHasPluginAccess(resource.data.pluginId)
+        clientHasPluginAccess(resource.data.pluginId) ||
+        hasTenantShareAccess(resource.data.pluginId)
       );
-      allow delete: if isAdmin() || resource.data.tenantId == request.auth.uid;
+      allow delete: if isAdmin() || resource.data.tenantId == request.auth.uid || hasTenantShareAccess(resource.data.pluginId);
 
       match /comments/{commentId} {
         allow read: if isAuthenticated() && (
           isAdmin() ||
           get(/databases/$(database)/documents/snap_submissions/$(submissionId)).data.tenantId == request.auth.uid ||
-          clientHasPluginAccess(get(/databases/$(database)/documents/snap_submissions/$(submissionId)).data.pluginId)
+          clientHasPluginAccess(get(/databases/$(database)/documents/snap_submissions/$(submissionId)).data.pluginId) ||
+          hasTenantShareAccess(get(/databases/$(database)/documents/snap_submissions/$(submissionId)).data.pluginId)
         );
         // Create: commenter must have read access to the parent submission (L-03)
         allow create: if isAuthenticated() && (
           isAdmin() ||
           get(/databases/$(database)/documents/snap_submissions/$(submissionId)).data.tenantId == request.auth.uid ||
-          clientHasPluginAccess(get(/databases/$(database)/documents/snap_submissions/$(submissionId)).data.pluginId)
+          clientHasPluginAccess(get(/databases/$(database)/documents/snap_submissions/$(submissionId)).data.pluginId) ||
+          hasTenantShareAccess(get(/databases/$(database)/documents/snap_submissions/$(submissionId)).data.pluginId)
         );
         allow update, delete: if isAuthenticated() && request.auth.uid == resource.data.authorUid;
       }
     }
 
     // Client invitations
+    match /tenant_shares/{shareId} {
+      allow read: if isAuthenticated() && (
+        resource.data.ownerTenantId == request.auth.uid ||
+        resource.data.grantedTenantId == request.auth.uid ||
+        isAdmin()
+      );
+      allow write: if isAdmin();
+    }
+
     match /client_invitations/{inviteId} {
       // create: server-side only (Cloud Function). Direct client creates are denied (M-05).
       allow create: if isAdmin();

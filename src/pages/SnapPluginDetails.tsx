@@ -12,14 +12,15 @@ import {
   ClipboardDocumentIcon,
   CheckIcon,
   UserPlusIcon,
+  UsersIcon,
   TrashIcon,
   ExclamationCircleIcon,
   LinkIcon,
 } from '@heroicons/react/24/outline';
-import type { SnapPlugin, Connection, ClientInvitation, KnackRole } from '../types';
+import type { SnapPlugin, Connection, ClientInvitation, KnackRole, TenantShare } from '../types';
 import { WIDGET_BASE_URL } from '../config/constants';
 
-const TABS = ['Details', 'Roles', 'Embed Code', 'Branding', 'Portal'] as const;
+const TABS = ['Details', 'Roles', 'Embed Code', 'Branding', 'Portal', 'Sharing'] as const;
 type Tab = typeof TABS[number];
 
 export default function SnapPluginDetails() {
@@ -47,12 +48,19 @@ export default function SnapPluginDetails() {
   const [inviteUrlModal, setInviteUrlModal] = useState<{ open: boolean; url: string; emailError: string }>({ open: false, url: '', emailError: '' });
   const [inviteUrlCopied, setInviteUrlCopied] = useState(false);
 
+  // Sharing state
+  const [tenantShares, setTenantShares] = useState<TenantShare[]>([]);
+  const [shareEmail, setShareEmail] = useState('');
+  const [sharing, setSharing] = useState(false);
+  const [revokeShareConfirm, setRevokeShareConfirm] = useState<{ open: boolean; shareId: string }>({ open: false, shareId: '' });
+
   useEffect(() => {
     if (!tenantId || !id) return;
     const load = async () => {
-      const [pluginDoc, invSnap] = await Promise.all([
+      const [pluginDoc, invSnap, shareSnap] = await Promise.all([
         getDoc(doc(db, 'tenants', tenantId, 'snapPlugins', id)),
         getDocs(query(collection(db, 'client_invitations'), where('tenantId', '==', tenantId))),
+        getDocs(query(collection(db, 'tenant_shares'), where('ownerTenantId', '==', tenantId))),
       ]);
       if (pluginDoc.exists()) {
         const p = { id: pluginDoc.id, ...pluginDoc.data() } as SnapPlugin;
@@ -64,6 +72,10 @@ export default function SnapPluginDetails() {
         .filter((d) => d.data().pluginIds?.includes(id))
         .map((d) => ({ id: d.id, ...d.data() } as ClientInvitation));
       setInvitations(pluginInvitations);
+      const pluginShares = shareSnap.docs
+        .filter((d) => d.data().pluginId === id)
+        .map((d) => ({ id: d.id, ...d.data() } as TenantShare));
+      setTenantShares(pluginShares);
       setLoading(false);
     };
     load();
@@ -153,6 +165,55 @@ export default function SnapPluginDetails() {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
+  };
+
+  const handleShare = async () => {
+    if (!shareEmail.trim() || !id) return;
+    setSharing(true);
+    try {
+      const shareFn = httpsCallable<
+        { email: string; pluginId: string },
+        { shareId: string; grantedEmail: string; grantedCompanyName: string; pluginName: string }
+      >(functions, 'shareFeedWithTenant');
+      const result = await shareFn({ email: shareEmail.trim(), pluginId: id });
+      const newShare: TenantShare = {
+        id: result.data.shareId,
+        ownerTenantId: tenantId,
+        ownerCompanyName: '',
+        grantedTenantId: '',
+        grantedEmail: result.data.grantedEmail,
+        grantedCompanyName: result.data.grantedCompanyName,
+        pluginId: id,
+        pluginName: result.data.pluginName,
+        status: 'active',
+        createdAt: serverTimestamp() as TenantShare['createdAt'],
+      };
+      setTenantShares((prev) => [newShare, ...prev]);
+      setShareEmail('');
+      setModal({ open: true, type: 'success', title: 'Feed shared', message: `${result.data.grantedCompanyName} now has full access to this snap feed.` });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to share feed.';
+      setModal({ open: true, type: 'error', title: 'Sharing failed', message: msg });
+    } finally {
+      setSharing(false);
+    }
+  };
+
+  const handleRevokeShare = (shareId: string) => {
+    setRevokeShareConfirm({ open: true, shareId });
+  };
+
+  const doRevokeShare = async () => {
+    const shareId = revokeShareConfirm.shareId;
+    setRevokeShareConfirm({ open: false, shareId: '' });
+    try {
+      const revokeFn = httpsCallable(functions, 'revokeTenantShare');
+      await revokeFn({ shareId });
+      setTenantShares((prev) => prev.map((s) => s.id === shareId ? { ...s, status: 'revoked' as const } : s));
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to revoke share.';
+      setModal({ open: true, type: 'error', title: 'Revoke failed', message: msg });
+    }
   };
 
   if (loading) {
@@ -301,6 +362,17 @@ s.onload=function(){Snap4KnackLoader.init({
         />
       )}
 
+      {activeTab === 'Sharing' && (
+        <SharingTab
+          shares={tenantShares}
+          shareEmail={shareEmail}
+          setShareEmail={setShareEmail}
+          onShare={handleShare}
+          sharing={sharing}
+          onRevoke={handleRevokeShare}
+        />
+      )}
+
       {/* Invite URL fallback modal */}
       {inviteUrlModal.open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-40">
@@ -356,6 +428,16 @@ s.onload=function(){Snap4KnackLoader.init({
         cancelLabel="Cancel"
         onConfirm={doRevoke}
         onClose={() => setRevokeConfirm({ open: false, invId: '' })}
+      />
+      <Modal
+        open={revokeShareConfirm.open}
+        type="warning"
+        title="Revoke feed share"
+        message="This tenant will immediately lose access to this snap feed. This cannot be undone."
+        confirmLabel="Revoke access"
+        cancelLabel="Cancel"
+        onConfirm={doRevokeShare}
+        onClose={() => setRevokeShareConfirm({ open: false, shareId: '' })}
       />
     </div>
   );
@@ -571,6 +653,78 @@ function PortalTab({ invitations, inviteEmail, setInviteEmail, onInvite, invitin
                 </span>
                 {inv.status !== 'revoked' && (
                   <button onClick={() => onRevoke(inv.id)} className="text-gray-400 hover:text-red-500">
+                    <TrashIcon className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+// ── Sharing Tab ───────────────────────────────────────────────────────────────
+
+function SharingTab({ shares, shareEmail, setShareEmail, onShare, sharing, onRevoke }: {
+  shares: TenantShare[];
+  shareEmail: string;
+  setShareEmail: (v: string) => void;
+  onShare: () => void;
+  sharing: boolean;
+  onRevoke: (id: string) => void;
+}) {
+  return (
+    <div className="space-y-6">
+      <div className="bg-white shadow rounded-lg p-6">
+        <h3 className="text-base font-semibold text-gray-900 mb-1">Share with another tenant</h3>
+        <p className="text-sm text-gray-500 mb-4">
+          Enter the email of an existing Snap4Knack tenant account. They will get full access to view, triage, comment on, and reorder all snap submissions for this plugin — the same as the owner.
+        </p>
+        <div className="flex gap-3">
+          <input
+            type="email"
+            value={shareEmail}
+            onChange={(e) => setShareEmail(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && onShare()}
+            placeholder="tenant@company.com"
+            className="flex-1 rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+          />
+          <button
+            onClick={onShare}
+            disabled={sharing || !shareEmail.trim()}
+            className="inline-flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg disabled:opacity-50"
+          >
+            <UsersIcon className="h-4 w-4" />
+            {sharing ? 'Sharing…' : 'Share Feed'}
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-white shadow rounded-lg overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-200">
+          <h3 className="text-base font-semibold text-gray-900">Shared With</h3>
+        </div>
+        {shares.length === 0 ? (
+          <div className="px-6 py-10 text-center">
+            <UsersIcon className="h-10 w-10 text-gray-300 mx-auto" />
+            <p className="mt-2 text-sm text-gray-500">Not shared with any tenants yet.</p>
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {shares.map((share) => (
+              <div key={share.id} className="flex items-center gap-4 px-6 py-4">
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-gray-900">{share.grantedCompanyName || share.grantedEmail}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">{share.grantedEmail}</p>
+                </div>
+                <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                  share.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'
+                }`}>
+                  {share.status === 'active' ? 'Active' : 'Revoked'}
+                </span>
+                {share.status === 'active' && (
+                  <button onClick={() => onRevoke(share.id)} className="text-gray-400 hover:text-red-500">
                     <TrashIcon className="h-4 w-4" />
                   </button>
                 )}

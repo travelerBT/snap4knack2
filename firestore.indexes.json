@@ -33,6 +33,22 @@
         { "fieldPath": "tenantId", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "tenant_shares",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "ownerTenantId", "order": "ASCENDING" },
+        { "fieldPath": "pluginId", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "tenant_shares",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "grantedTenantId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

@@ -13,6 +13,7 @@ export interface User {
   roles: UserRole[];
   tenantId?: string;
   clientAccess?: string[]; // pluginIds visible to client users
+  sharedPluginAccess?: string[]; // pluginIds from other tenants shared with this user
   tosAcceptedAt?: Timestamp;
   createdAt: Timestamp;
   lastLogin?: Timestamp;
@@ -207,6 +208,22 @@ export interface ClientInvitation {
   status: InvitationStatus;
 }
 
+// ─── Tenant Shares ───────────────────────────────────────────────────────────
+
+export interface TenantShare {
+  id: string;
+  ownerTenantId: string;
+  ownerCompanyName: string;
+  grantedTenantId: string;
+  grantedEmail: string;
+  grantedCompanyName: string;
+  pluginId: string;
+  pluginName: string;
+  status: 'active' | 'revoked';
+  createdAt: Timestamp;
+  revokedAt?: Timestamp;
+}
+
 // ─── API Keys ─────────────────────────────────────────────────────────────────
 
 export interface ApiKey {
@@ -233,6 +250,7 @@ export interface AuthContextType {
   isTenant: boolean;
   isClient: boolean;
   clientAccess: string[];
+  sharedPluginAccess: string[];
   loading: boolean;
   tosAccepted: boolean;
   signup: (email: string, password: string, companyName: string) => Promise<void>;

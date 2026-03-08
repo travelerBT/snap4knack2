@@ -139,6 +139,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const isTenant = userRoles.includes('tenant') || isAdmin;
   const isClient = userRoles.includes('client');
   const clientAccess = user?.clientAccess || [];
+  const sharedPluginAccess = user?.sharedPluginAccess || [];
   const tosAccepted = !!user?.tosAcceptedAt;
 
   const value: AuthContextType = {
@@ -150,6 +151,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isTenant,
     isClient,
     clientAccess,
+    sharedPluginAccess,
     loading,
     tosAccepted,
     signup,
