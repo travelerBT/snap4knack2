@@ -54,6 +54,7 @@
     position: 'bottom-right',
     categories: ['Bug', 'Feature Request', 'Question', 'Other'],
     hipaaEnabled: false,
+    allowRecording: false,
   };
 
   // ── Console capture (all levels) ──────────────────────────────────────────
@@ -179,6 +180,15 @@
       if (doc.fields.hipaaEnabled && doc.fields.hipaaEnabled.booleanValue === true) {
         state.hipaaEnabled = true;
       }
+      // Read allowRecording from snapSettings
+      if (ssField && ssField.mapValue && ssField.mapValue.fields) {
+        var sf2 = ssField.mapValue.fields;
+        if (sf2.allowRecording && sf2.allowRecording.booleanValue === true) {
+          state.allowRecording = true;
+        }
+      }
+      // HIPAA always overrides allowRecording
+      if (state.hipaaEnabled) state.allowRecording = false;
     }).catch(function (e) {
       console.warn('[Snap4Knack] Could not fetch plugin branding:', e.message);
     });
@@ -369,8 +379,10 @@
       { id: MODES.FULL,      icon: SVG_FULL,    label: 'Full Page',      desc: 'Capture the entire visible page' },
       { id: MODES.AREA,      icon: SVG_AREA,    label: 'Select Area',    desc: 'Draw a region to capture' },
       { id: MODES.PIN,       icon: SVG_PIN,     label: 'Pin Element',    desc: 'Click on a specific element' },
-      { id: MODES.RECORDING, icon: SVG_RECORD,  label: 'Record Screen',  desc: 'Record up to 30 seconds' },
     ];
+    if (state.allowRecording && !state.hipaaEnabled) {
+      modes.push({ id: MODES.RECORDING, icon: SVG_RECORD, label: 'Record Screen', desc: 'Record up to 30 seconds' });
+    }
 
     modes.forEach(function (m) {
       var btn = el('button', '', '');
