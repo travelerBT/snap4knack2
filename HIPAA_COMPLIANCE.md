@@ -48,7 +48,7 @@ Snap4Knack2 offers an opt-in **HIPAA mode** that can be enabled per plugin. When
 | # | Gap | HIPAA Rule | Risk | Recommended Fix |
 |---|-----|-----------|------|-----------------|
 | **G-01** | ~~**No BAA with SendGrid**~~ **✅ Resolved** | § 164.308(b)(1) | **RESOLVED** — BAA is handled via an external system outside this codebase. | — |
-| **G-02** | **Application-level audit log — partial** | § 164.312(b) — Audit controls | **MEDIUM** — Snap submissions, comments, and status/priority changes are now tracked (submissions carry submitter identity; comments carry authorId/authorName; status and priority changes write to `snap_submissions/{id}/history` with changedBy, changedByName, changeType, fromValue, toValue). **Still missing:** read/view access logging (no Firestore read trigger). | Add Cloud Function proxy or client-side hook to log snap opens to an `audit_log` collection for HIPAA snaps. |
+| **G-02** | ~~**Application-level audit log — partial**~~ **✅ Resolved** | § 164.312(b) — Audit controls | **RESOLVED** — Full audit trail now implemented. Submissions carry submitter identity; comments carry authorId/authorName; status and priority changes write to `snap_submissions/{id}/history`; and HIPAA snap views (tenant and client portal) write immutable `snap_viewed` events to the top-level `audit_log` Firestore collection with viewedBy uid, name, email, role, and timestamp. Firestore rules enforce immutability (no update/delete) and scope reads to the owning tenant. | — |
 | **G-03** | ~~**Screen recordings not DLP-scanned**~~ **✅ Resolved** | § 164.312(a)(2)(iv) | **RESOLVED** — Screen recording is disabled when a plugin has `hipaaEnabled: true`. No recordings are stored for HIPAA plugins. | — |
 | **G-04** | ~~**No formal Risk Assessment document**~~ **✅ Resolved** | § 164.308(a)(1)(ii)(A) — Risk analysis | **RESOLVED** — Formal risk assessment documented in `RISK_ASSESSMENT.md`. Covers 12 threat scenarios with likelihood/impact ratings, current controls, residual risk, and remediation roadmap. Review annually. | — |
 | **G-05** | ~~**No formal Incident Response / Breach Notification plan**~~ **✅ Resolved** | § 164.308(a)(6) — Security Incident Procedures; § 164.400–414 — Breach Notification Rule | **RESOLVED** — Full plan documented in `INCIDENT_RESPONSE_PLAN.md`. Covers incident classification (P1–P4), response team roles, containment procedures, HIPAA breach determination (4-factor test), HHS notification obligations, breach log template, post-incident review process, and customer notification template. | — |
@@ -110,7 +110,7 @@ Snap4Knack2 offers an opt-in **HIPAA mode** that can be enabled per plugin. When
 - [ ] **MFA enforcement for HIPAA tenant accounts** — ❌ G-06
 - [ ] **Frontend idle session timeout** — ❌ G-11
 - [x] Audit controls — GCP Cloud Audit Logs at infrastructure level
-- [x] **Application-level audit log — partial** (submissions, comments, status/priority changes tracked; read logging still needed) — ⚠️ G-02
+- [x] **Application-level audit log** — ✅ G-02 resolved (submissions, comments, history, + HIPAA `snap_viewed` events in `audit_log`)
 - [x] Integrity controls — Firestore atomic writes, DLP fail-closed
 - [x] Person authentication — Firebase Auth email/password
 - [x] Transmission security — HTTPS/TLS enforced by Firebase Hosting and Cloud Functions
@@ -145,7 +145,7 @@ Snap4Knack2 offers an opt-in **HIPAA mode** that can be enabled per plugin. When
 | ✅ — | **G-04** — Document Risk Assessment | — | Resolved (`RISK_ASSESSMENT.md`) |
 | ✅ — | **G-05** — Document Incident Response / Breach Notification Plan | — | Resolved (`INCIDENT_RESPONSE_PLAN.md`) |
 | 🔴 1 | **G-06** — MFA enforcement / prompt for HIPAA tenants | Medium (Firebase MFA or in-app warning) | Open |
-| 🟠 2 | **G-02** — Read/view access audit log for HIPAA snaps | Medium (Cloud Function proxy or client hook) | Partial |
+| ✅ — | **G-02** — Application-level audit log (submissions, comments, history, snap_viewed events) | — | Resolved |
 | 🟠 3 | **G-09** — In-app BAA gate (`baaAcceptedAt` on tenant + UI flow) | Medium (UI + email trigger) | Partial (TOS discloses requirement) |
 | 🟡 4 | **G-07** — DLP scan annotation shape text | Low (add loop in submitSnap) | Open |
 | 🟡 5 | **G-10** — Tighten legacy storage path rules | Low (1-line storage rule change) | Open |

@@ -25,6 +25,7 @@ export default function ClientSnapDetail() {
   const [posting, setPosting] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
+  const auditLoggedRef = useRef(false);
 
   useEffect(() => {
     if (!id) return;
@@ -46,6 +47,25 @@ export default function ClientSnapDetail() {
       unsubComments();
     };
   }, [id]);
+
+  // HIPAA audit log — write one snap_viewed entry per page load for HIPAA snaps
+  useEffect(() => {
+    if (!sub || !user || !id) return;
+    if (!sub.hipaaEnabled) return;
+    if (auditLoggedRef.current) return;
+    auditLoggedRef.current = true;
+    addDoc(collection(db, 'audit_log'), {
+      eventType: 'snap_viewed',
+      snapId: id,
+      tenantId: sub.tenantId,
+      pluginId: sub.pluginId,
+      viewedBy: user.uid,
+      viewedByName: user.displayName || user.email || 'Unknown',
+      viewedByEmail: user.email || '',
+      viewedByRole: 'client',
+      viewedAt: serverTimestamp(),
+    }).catch(() => { /* non-blocking */ });
+  }, [sub, user, id]);
 
   const drawAnnotations = () => {
     const canvas = canvasRef.current;

@@ -213,6 +213,18 @@ export interface StatusHistoryEntry {
   changedAt: Timestamp;
 }
 
+export interface AuditLogEntry {
+  eventType: 'snap_viewed';
+  snapId: string;
+  tenantId: string;
+  pluginId: string;
+  viewedBy: string;          // uid
+  viewedByName: string;
+  viewedByEmail: string;
+  viewedByRole: 'tenant' | 'client' | 'admin';
+  viewedAt: Timestamp;
+}
+
 // ─── Client Invitations ──────────────────────────────────────────────────────
 
 export type InvitationStatus = 'pending' | 'accepted' | 'revoked';

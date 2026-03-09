@@ -33,10 +33,30 @@ export default function SnapDetail() {
   const [notifyComment, setNotifyComment] = useState(false);
   const [showConsole, setShowConsole] = useState(false);
   const [history, setHistory] = useState<StatusHistoryEntry[]>([]);
+  const auditLoggedRef = useRef(false);
 
   useEffect(() => {
     if (sub?.type === 'console_errors') setShowConsole(true);
   }, [sub?.type]);
+
+  // HIPAA audit log — write one snap_viewed entry per page load for HIPAA snaps
+  useEffect(() => {
+    if (!sub || !user || !id) return;
+    if (!sub.hipaaEnabled) return;
+    if (auditLoggedRef.current) return;
+    auditLoggedRef.current = true;
+    addDoc(collection(db, 'audit_log'), {
+      eventType: 'snap_viewed',
+      snapId: id,
+      tenantId: sub.tenantId,
+      pluginId: sub.pluginId,
+      viewedBy: user.uid,
+      viewedByName: user.displayName || user.email || 'Unknown',
+      viewedByEmail: user.email || '',
+      viewedByRole: 'tenant',
+      viewedAt: serverTimestamp(),
+    }).catch(() => { /* non-blocking — log failure must not break the UI */ });
+  }, [sub, user, id]);
   const [updating, setUpdating] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);

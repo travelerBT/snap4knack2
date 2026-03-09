@@ -156,5 +156,18 @@ service cloud.firestore {
     match /snap_counters/{tenantId} {
       allow read, write: if false;
     }
+
+    // HIPAA audit log — immutable read/view events for HIPAA snap access (G-02)
+    match /audit_log/{logId} {
+      // Only the authenticated viewer may create their own entry
+      allow create: if isAuthenticated() && request.auth.uid == request.resource.data.viewedBy;
+      // Tenant owner and admins may read entries for their tenant
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        request.auth.uid == resource.data.tenantId
+      );
+      // Immutable — no updates or deletes
+      allow update, delete: if false;
+    }
   }
 }
