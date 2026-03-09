@@ -32,6 +32,30 @@ const HIPAA_INFO_TYPES: dlpProtos.google.privacy.dlp.v2.IInfoType[] = [
   { name: "US_HEALTHCARE_NPI" },
 ];
 
+// Custom regex info types — belt-and-suspenders for common PHI formats that DLP
+// may score below threshold when appearing in isolation (no surrounding context).
+const HIPAA_CUSTOM_INFO_TYPES: dlpProtos.google.privacy.dlp.v2.ICustomInfoType[] = [
+  {
+    // US phone numbers: (NNN) NNN-NNNN, NNN-NNN-NNNN, NNN.NNN.NNNN, NNN NNN NNNN
+    infoType: { name: "PHONE_NUMBER_REGEX" },
+    likelihood: dlpProtos.google.privacy.dlp.v2.Likelihood.VERY_LIKELY,
+    regex: { pattern: "\\b(\\(\\d{3}\\)[\\s.-]?\\d{3}[-.\\s]\\d{4}|\\d{3}[-.\\s]\\d{3}[-.\\s]\\d{4})\\b" },
+  },
+  {
+    // US SSN: NNN-NN-NNNN, NNN NN NNNN, NNNNNNNNN
+    infoType: { name: "SSN_REGEX" },
+    likelihood: dlpProtos.google.privacy.dlp.v2.Likelihood.VERY_LIKELY,
+    regex: { pattern: "\\b(?!000|666|9\\d{2})\\d{3}[- ]?(?!00)\\d{2}[- ]?(?!0{4})\\d{4}\\b" },
+  },
+];
+
+// Combined infoTypes list including custom regex types — used in deidentifyConfig transformations
+const ALL_INFO_TYPES = [
+  ...HIPAA_INFO_TYPES,
+  { name: "PHONE_NUMBER_REGEX" },
+  { name: "SSN_REGEX" },
+];
+
 /** DLP text redaction — replaces PHI tokens inline with [TYPE] placeholders */
 async function dlpRedactText(text: string): Promise<string> {
   if (!text || text.length < 3) return text;
@@ -40,11 +64,13 @@ async function dlpRedactText(text: string): Promise<string> {
       parent: `projects/${PROJECT_ID}/locations/global`,
       inspectConfig: {
         infoTypes: HIPAA_INFO_TYPES,
+        customInfoTypes: HIPAA_CUSTOM_INFO_TYPES,
+        minLikelihood: dlpProtos.google.privacy.dlp.v2.Likelihood.POSSIBLE,
       },
       deidentifyConfig: {
         infoTypeTransformations: {
           transformations: [{
-            infoTypes: HIPAA_INFO_TYPES,
+            infoTypes: ALL_INFO_TYPES,
             primitiveTransformation: { replaceWithInfoTypeConfig: {} },
           }],
         },
@@ -65,12 +91,14 @@ async function dlpRedactImage(imageBytes: Buffer): Promise<Buffer> {
       parent: `projects/${PROJECT_ID}/locations/global`,
       inspectConfig: {
         infoTypes: HIPAA_INFO_TYPES,
+        customInfoTypes: HIPAA_CUSTOM_INFO_TYPES,
+        minLikelihood: dlpProtos.google.privacy.dlp.v2.Likelihood.POSSIBLE,
       },
       byteItem: {
         type: dlpProtos.google.privacy.dlp.v2.ByteContentItem.BytesType.IMAGE_PNG,
         data: imageBytes,
       },
-      imageRedactionConfigs: HIPAA_INFO_TYPES.map((t) => ({ infoType: t })),
+      imageRedactionConfigs: ALL_INFO_TYPES.map((t) => ({ infoType: t })),
     });
     const redacted = response.redactedImage;
     if (redacted && redacted.length > 0) return Buffer.from(redacted as Uint8Array);
@@ -588,6 +616,7 @@ export const onCommentCreated = functions.firestore.onDocumentCreated(
     // Check HIPAA mode for this plugin
     const pluginDoc = await db.collection("tenants").doc(tenantId).collection("snapPlugins").doc(pluginId).get();
     const hipaaMode = pluginDoc.data()?.hipaaEnabled === true;
+    console.log(`[HIPAA] comment on submission ${submissionId}, plugin ${pluginId}, hipaaMode=${hipaaMode}`);
 
     // HIPAA: DLP-redact comment text and update the doc — always, regardless of notify flag
     const rawCommentText = (comment.text as string) || "";
