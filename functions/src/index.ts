@@ -726,10 +726,27 @@ export const onCommentCreated = functions.firestore.onDocumentCreated(
     let commentText = he(rawCommentText);
     const commentRef = db.collection("snap_submissions").doc(submissionId)
       .collection("comments").doc(event.params.commentId);
+    let dlpFlagged = false;
     if (hipaaMode && rawCommentText) {
       const redacted = await dlpRedactText(rawCommentText);
-      await commentRef.update({ text: redacted, dlpFlagged: redacted !== rawCommentText, dlpPending: false });
+      dlpFlagged = redacted !== rawCommentText;
+      await commentRef.update({ text: redacted, dlpFlagged, dlpPending: false });
       commentText = he(redacted);
+
+      // Audit the DLP scan result — log that a scan ran and whether PHI was detected/redacted.
+      // We intentionally do NOT log the original or redacted text (that would re-introduce PHI).
+      db.collection("audit_log").add({
+        eventType: "dlp_scan_completed",
+        snapId: submissionId,
+        tenantId,
+        pluginId,
+        actorUid: null,
+        actorName: "System (DLP)",
+        actorEmail: "",
+        actorRole: "system",
+        detail: `commentId: ${event.params.commentId}; flagged: ${dlpFlagged}`,
+        eventAt: admin.firestore.FieldValue.serverTimestamp(),
+      }).catch(() => {});
     } else {
       // Always clear the pending flag even when HIPAA is off
       await commentRef.update({ dlpPending: false });

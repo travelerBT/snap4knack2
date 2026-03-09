@@ -219,7 +219,8 @@ export type AuditEventType =
   | 'snap_comment_created'
   | 'snap_status_changed'
   | 'snap_priority_changed'
-  | 'snap_purged';
+  | 'snap_purged'
+  | 'dlp_scan_completed';
 
 export interface AuditLogEntry {
   eventType: AuditEventType;

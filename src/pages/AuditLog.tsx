@@ -27,6 +27,7 @@ const EVENT_BADGE: Record<string, { bg: string; text: string; label: string }> =
   snap_status_changed:   { bg: 'bg-orange-50', text: 'text-orange-700', label: 'Status ↗' },
   snap_priority_changed: { bg: 'bg-orange-50', text: 'text-orange-700', label: 'Priority ↗' },
   snap_purged:           { bg: 'bg-red-50',    text: 'text-red-700',    label: 'Purged' },
+  dlp_scan_completed:    { bg: 'bg-violet-50', text: 'text-violet-700', label: 'DLP Scan' },
 };
 
 export default function AuditLog() {
@@ -168,6 +169,7 @@ export default function AuditLog() {
             <option value="snap_status_changed">Status change</option>
             <option value="snap_priority_changed">Priority change</option>
             <option value="snap_purged">Purged</option>
+            <option value="dlp_scan_completed">DLP Scan</option>
           </select>
         </div>
         {/* Date from */}
