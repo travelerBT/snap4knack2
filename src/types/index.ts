@@ -199,6 +199,8 @@ export interface SnapComment {
   text: string;
   createdAt: Timestamp;
   notify?: boolean;      // when true, fan-out email to all commenters
+  dlpPending?: boolean;  // true while Cloud Function DLP processing is in-flight
+  dlpFlagged?: boolean;  // true if DLP redacted any PHI
 }
 
 // ─── Client Invitations ──────────────────────────────────────────────────────

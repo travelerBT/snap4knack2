@@ -622,12 +622,15 @@ export const onCommentCreated = functions.firestore.onDocumentCreated(
     // HIPAA: DLP-redact comment text and update the doc — always, regardless of notify flag
     const rawCommentText = (comment.text as string) || "";
     let commentText = he(rawCommentText);
+    const commentRef = db.collection("snap_submissions").doc(submissionId)
+      .collection("comments").doc(event.params.commentId);
     if (hipaaMode && rawCommentText) {
       const redacted = await dlpRedactText(rawCommentText);
-      await db.collection("snap_submissions").doc(submissionId)
-        .collection("comments").doc(event.params.commentId)
-        .update({ text: redacted, dlpFlagged: redacted !== rawCommentText });
+      await commentRef.update({ text: redacted, dlpFlagged: redacted !== rawCommentText, dlpPending: false });
       commentText = he(redacted);
+    } else {
+      // Always clear the pending flag even when HIPAA is off
+      await commentRef.update({ dlpPending: false });
     }
 
     // Only fan-out email when the commenter explicitly checked "Notify".

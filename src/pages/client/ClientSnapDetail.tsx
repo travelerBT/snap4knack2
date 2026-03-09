@@ -121,6 +121,7 @@ export default function ClientSnapDetail() {
       text: commentText.trim(),
       notify: notifyComment,
       createdAt: serverTimestamp() as SnapComment['createdAt'],
+      dlpPending: true,
     };
     await addDoc(collection(db, 'snap_submissions', id, 'comments'), c);
     // onSnapshot listener will update comments automatically
@@ -189,7 +190,14 @@ export default function ClientSnapDetail() {
                       <span className="text-xs font-medium text-gray-700">{c.authorName}</span>
                       <span className="text-xs text-gray-400">{c.createdAt?.toDate?.()?.toLocaleString() ?? ''}</span>
                     </div>
-                    <p className="text-sm text-gray-700 mt-0.5">{c.text}</p>
+                    {c.dlpPending ? (
+                      <div className="mt-1 flex items-center gap-2">
+                        <div className="h-3 w-48 bg-gray-200 rounded animate-pulse" />
+                        <span className="text-xs text-gray-400 italic">Processing…</span>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-700 mt-0.5">{c.text}</p>
+                    )}
                   </div>
                 </div>
               ))}
