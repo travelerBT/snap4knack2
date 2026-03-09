@@ -38,6 +38,9 @@ async function dlpRedactText(text: string): Promise<string> {
   try {
     const [response] = await dlpClient.deidentifyContent({
       parent: `projects/${PROJECT_ID}/locations/global`,
+      inspectConfig: {
+        infoTypes: HIPAA_INFO_TYPES,
+      },
       deidentifyConfig: {
         infoTypeTransformations: {
           transformations: [{
@@ -51,7 +54,7 @@ async function dlpRedactText(text: string): Promise<string> {
     return response.item?.value ?? text;
   } catch (e) {
     console.error("[DLP] Text redaction error:", e);
-    return text; // fail-open: return original rather than losing data
+    throw e; // fail-closed: don't store unredacted PHI
   }
 }
 
@@ -60,6 +63,9 @@ async function dlpRedactImage(imageBytes: Buffer): Promise<Buffer> {
   try {
     const [response] = await dlpClient.redactImage({
       parent: `projects/${PROJECT_ID}/locations/global`,
+      inspectConfig: {
+        infoTypes: HIPAA_INFO_TYPES,
+      },
       byteItem: {
         type: dlpProtos.google.privacy.dlp.v2.ByteContentItem.BytesType.IMAGE_PNG,
         data: imageBytes,
@@ -71,7 +77,7 @@ async function dlpRedactImage(imageBytes: Buffer): Promise<Buffer> {
     return imageBytes; // no PHI found — return original
   } catch (e) {
     console.error("[DLP] Image redaction error:", e);
-    return imageBytes; // fail-open
+    throw e; // fail-closed: don't publish unredacted image
   }
 }
 
