@@ -518,34 +518,46 @@ export default function SnapDetail() {
           </div>
 
           {/* Activity */}
-          {history.length > 0 && (
-            <div className="bg-white shadow rounded-lg p-5">
-              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Activity</h3>
-              <ol className="space-y-3">
-                {history.map((h) => {
-                  const fromLabel = h.changeType === 'status'
-                    ? (STATUS_OPTIONS.find((s) => s.value === h.fromValue)?.label ?? h.fromValue)
-                    : (PRIORITY_OPTIONS.find((p) => p.value === h.fromValue)?.label ?? h.fromValue);
-                  const toLabel = h.changeType === 'status'
-                    ? (STATUS_OPTIONS.find((s) => s.value === h.toValue)?.label ?? h.toValue)
-                    : (PRIORITY_OPTIONS.find((p) => p.value === h.toValue)?.label ?? h.toValue);
-                  return (
-                    <li key={h.id} className="flex items-start gap-2 text-xs">
-                      <span className="mt-0.5 h-5 w-5 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 flex-shrink-0">→</span>
-                      <div>
-                        <span className="font-medium text-gray-700">{h.changedByName}</span>
-                        <span className="text-gray-500"> changed {h.changeType} </span>
-                        <span className="font-medium text-gray-600">{fromLabel}</span>
-                        <span className="text-gray-500"> → </span>
-                        <span className="font-medium text-gray-700">{toLabel}</span>
-                        <div className="text-gray-400 mt-0.5">{h.changedAt?.toDate?.()?.toLocaleString() ?? ''}</div>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ol>
-            </div>
-          )}
+          <div className="bg-white shadow rounded-lg p-5">
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Activity</h3>
+            <ol className="space-y-3">
+              {/* Synthetic "Snap submitted" entry — always first */}
+              <li className="flex items-start gap-2 text-xs">
+                <span className="mt-0.5 h-5 w-5 rounded-full bg-blue-50 flex items-center justify-center text-blue-400 flex-shrink-0">✦</span>
+                <div>
+                  <span className="font-medium text-gray-700">
+                    {sub.context?.knackUserName ?? 'Widget user'}
+                  </span>
+                  <span className="text-gray-500"> submitted snap</span>
+                  {sub.snapNumber != null && (
+                    <span className="text-gray-500"> #{sub.snapNumber}</span>
+                  )}
+                  <div className="text-gray-400 mt-0.5">{createdAt ? createdAt.toLocaleString() : '—'}</div>
+                </div>
+              </li>
+              {history.map((h) => {
+                const fromLabel = h.changeType === 'status'
+                  ? (STATUS_OPTIONS.find((s) => s.value === h.fromValue)?.label ?? h.fromValue)
+                  : (PRIORITY_OPTIONS.find((p) => p.value === h.fromValue)?.label ?? h.fromValue);
+                const toLabel = h.changeType === 'status'
+                  ? (STATUS_OPTIONS.find((s) => s.value === h.toValue)?.label ?? h.toValue)
+                  : (PRIORITY_OPTIONS.find((p) => p.value === h.toValue)?.label ?? h.toValue);
+                return (
+                  <li key={h.id} className="flex items-start gap-2 text-xs">
+                    <span className="mt-0.5 h-5 w-5 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 flex-shrink-0">→</span>
+                    <div>
+                      <span className="font-medium text-gray-700">{h.changedByName}</span>
+                      <span className="text-gray-500"> changed {h.changeType} </span>
+                      <span className="font-medium text-gray-600">{fromLabel}</span>
+                      <span className="text-gray-500"> → </span>
+                      <span className="font-medium text-gray-700">{toLabel}</span>
+                      <div className="text-gray-400 mt-0.5">{h.changedAt?.toDate?.()?.toLocaleString() ?? ''}</div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
+          </div>
 
           {/* Badges summary */}
           <div className="flex gap-2 flex-wrap">
