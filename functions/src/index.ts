@@ -1271,3 +1271,56 @@ export const purgeExpiredSnaps = onSchedule(
     console.log(`[purgeExpiredSnaps] Purged ${purged} expired snap(s).`);
   }
 );
+
+// ── onAuditLogCreated ────────────────────────────────────────────────────────────
+// Immutable audit archive — mirrors every audit_log Firestore document to Cloud Storage
+// as a write-once JSON file at audit_archive/{YYYY}/{MM}/{DD}/{logId}.json.
+//
+// Rationale: Firestore rules block client deletes, but Admin SDK / Firebase console
+// access could still remove documents. The Storage copy is independent and can be
+// separately protected with a bucket Retention Policy or Object Lock.
+// HIPAA § 164.312(b) requires that audit records be retained and not modifiable.
+
+export const onAuditLogCreated = functions.firestore.onDocumentCreated(
+  "audit_log/{logId}",
+  async (event) => {
+    const data = event.data?.data();
+    if (!data) return;
+
+    const logId = event.params.logId;
+
+    // Resolve the timestamp: server timestamps are a Firestore Timestamp object
+    const ts: admin.firestore.Timestamp | undefined = data.eventAt as admin.firestore.Timestamp | undefined;
+    const date = ts ? ts.toDate() : new Date();
+    const yyyy = date.getUTCFullYear();
+    const mm = String(date.getUTCMonth() + 1).padStart(2, "0");
+    const dd = String(date.getUTCDate()).padStart(2, "0");
+
+    const path = `audit_archive/${yyyy}/${mm}/${dd}/${logId}.json`;
+    const bucket = admin.storage().bucket(STORAGE_BUCKET);
+    const file = bucket.file(path);
+
+    const payload = JSON.stringify({
+      ...data,
+      // Convert Firestore Timestamp to ISO string for portability
+      eventAt: ts ? ts.toDate().toISOString() : null,
+      _archivedAt: new Date().toISOString(),
+    }, null, 2);
+
+    await file.save(payload, {
+      contentType: "application/json",
+      metadata: {
+        // Prevent accidental overwrites
+        ifGenerationMatch: 0,
+        metadata: {
+          logId,
+          eventType: (data.eventType as string) ?? "",
+          snapId: (data.snapId as string) ?? "",
+          tenantId: (data.tenantId as string) ?? "",
+        },
+      },
+    });
+
+    console.log(`[onAuditLogCreated] Archived ${logId} → gs://${STORAGE_BUCKET}/${path}`);
+  }
+);
