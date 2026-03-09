@@ -50,8 +50,8 @@ Snap4Knack2 offers an opt-in **HIPAA mode** that can be enabled per plugin. When
 | **G-01** | ~~**No BAA with SendGrid**~~ **✅ Resolved** | § 164.308(b)(1) | **RESOLVED** — BAA is handled via an external system outside this codebase. | — |
 | **G-02** | **Application-level audit log — partial** | § 164.312(b) — Audit controls | **MEDIUM** — Snap submissions, comments, and status/priority changes are now tracked (submissions carry submitter identity; comments carry authorId/authorName; status and priority changes write to `snap_submissions/{id}/history` with changedBy, changedByName, changeType, fromValue, toValue). **Still missing:** read/view access logging (no Firestore read trigger). | Add Cloud Function proxy or client-side hook to log snap opens to an `audit_log` collection for HIPAA snaps. |
 | **G-03** | ~~**Screen recordings not DLP-scanned**~~ **✅ Resolved** | § 164.312(a)(2)(iv) | **RESOLVED** — Screen recording is disabled when a plugin has `hipaaEnabled: true`. No recordings are stored for HIPAA plugins. | — |
-| **G-04** | **No formal Risk Assessment document** | § 164.308(a)(1)(ii)(A) — Risk analysis | **HIGH** — HIPAA requires a documented, organization-wide risk assessment identifying threats to ePHI confidentiality, integrity, and availability. | Produce a Risk Assessment document (can be internal, does not ship with the product) covering: data flows, threat actors, likelihood/impact ratings, and mitigating controls. Review annually. |
-| **G-05** | **No formal Incident Response / Breach Notification plan** | § 164.308(a)(6) — Security Incident Procedures; § 164.400–414 — Breach Notification Rule | **HIGH** — HIPAA requires written procedures for responding to security incidents and notifying patients/HHS within 60 days of a breach. | Document (internal): incident classification criteria, escalation contacts, 60-day HHS notification procedure, patient notification templates, and breach log. This does not need to be in the codebase but must exist. |
+| **G-04** | ~~**No formal Risk Assessment document**~~ **✅ Resolved** | § 164.308(a)(1)(ii)(A) — Risk analysis | **RESOLVED** — Formal risk assessment documented in `RISK_ASSESSMENT.md`. Covers 12 threat scenarios with likelihood/impact ratings, current controls, residual risk, and remediation roadmap. Review annually. | — |
+| **G-05** | ~~**No formal Incident Response / Breach Notification plan**~~ **✅ Resolved** | § 164.308(a)(6) — Security Incident Procedures; § 164.400–414 — Breach Notification Rule | **RESOLVED** — Full plan documented in `INCIDENT_RESPONSE_PLAN.md`. Covers incident classification (P1–P4), response team roles, containment procedures, HIPAA breach determination (4-factor test), HHS notification obligations, breach log template, post-incident review process, and customer notification template. | — |
 
 ### High
 
@@ -90,13 +90,13 @@ Snap4Knack2 offers an opt-in **HIPAA mode** that can be enabled per plugin. When
 ### Administrative Safeguards (§ 164.308)
 
 - [x] Security Management Process — risk management controls implemented (DLP, retention, access controls)
-- [ ] **Risk Analysis documented** — ❌ G-04
-- [ ] **Risk Management Plan documented** — ❌ G-04
+- [x] **Risk Analysis documented** — ✅ G-04 resolved (`RISK_ASSESSMENT.md`)
+- [x] **Risk Management Plan documented** — ✅ G-04 resolved (`RISK_ASSESSMENT.md`)
 - [x] Assigned Security Responsibility — engineering owns technical controls
 - [x] Workforce Access Management — role-based access (admin/tenant/client/widget)
 - [x] **Information Access Management — BAA with SendGrid** — ✅ G-01 resolved (external)
 - [ ] **Security Awareness Training documentation** — ❌ G-08
-- [ ] **Security Incident Response procedures documented** — ❌ G-05
+- [x] **Security Incident Response procedures documented** — ✅ G-05 resolved (`INCIDENT_RESPONSE_PLAN.md`)
 - [x] Contingency Plan — GCP automated backups, nightly purge function
 - [ ] **Contingency Plan documented (RTO/RPO)** — ❌ G-12
 - [x] Evaluation — This document serves as the periodic evaluation artifact
@@ -142,19 +142,17 @@ Snap4Knack2 offers an opt-in **HIPAA mode** that can be enabled per plugin. When
 |----------|------|--------|--------|
 | ✅ — | **G-01** — SendGrid BAA | — | Resolved (external) |
 | ✅ — | **G-03** — Disable screen recording for HIPAA plugins | — | Resolved |
-| 🔴 1 | **G-04** — Document Risk Assessment | Medium (document, no code) | Open |
-| 🔴 2 | **G-05** — Document Incident Response / Breach Notification Plan | Medium (document, no code) | Open |
-| 🟠 3 | **G-02** — Read/view access audit log for HIPAA snaps | Medium (Cloud Function proxy or client hook) | Partial |
-| 🟠 4 | **G-06** — MFA enforcement / prompt for HIPAA tenants | Medium (Firebase MFA or in-app warning) | Open |
-| 🟠 5 | **G-09** — In-app BAA gate (`baaAcceptedAt` on tenant + UI flow) | Medium (UI + email trigger) | Partial (TOS discloses requirement) |
-| 🟡 6 | **G-07** — DLP scan annotation shape text | Low (add loop in submitSnap) | Open |
-| 🟡 7 | **G-10** — Tighten legacy storage path rules | Low (Firestore rules edit) | Open |
-| 🟡 8 | **G-11** — Frontend idle session timeout | Low (client-side idle timer) | Open |
-| 🟡 9 | **G-10** — Tighten legacy storage path rules | Low (1-line storage rule change) |
-| 🟡 10 | **G-11** — Frontend idle session timeout | Low–Medium (idle timer component) |
-| 🟢 11 | **G-08** — Workforce training documentation | Low (internal doc) |
-| 🟢 12 | **G-12** — Backup / DR documentation + enable Firestore PITR | Low |
-| 🟢 13 | **G-13** — Audit log for API key access | Low (extends G-02) |
+| ✅ — | **G-04** — Document Risk Assessment | — | Resolved (`RISK_ASSESSMENT.md`) |
+| ✅ — | **G-05** — Document Incident Response / Breach Notification Plan | — | Resolved (`INCIDENT_RESPONSE_PLAN.md`) |
+| 🔴 1 | **G-06** — MFA enforcement / prompt for HIPAA tenants | Medium (Firebase MFA or in-app warning) | Open |
+| 🟠 2 | **G-02** — Read/view access audit log for HIPAA snaps | Medium (Cloud Function proxy or client hook) | Partial |
+| 🟠 3 | **G-09** — In-app BAA gate (`baaAcceptedAt` on tenant + UI flow) | Medium (UI + email trigger) | Partial (TOS discloses requirement) |
+| 🟡 4 | **G-07** — DLP scan annotation shape text | Low (add loop in submitSnap) | Open |
+| 🟡 5 | **G-10** — Tighten legacy storage path rules | Low (1-line storage rule change) | Open |
+| 🟡 6 | **G-11** — Frontend idle session timeout | Low–Medium (idle timer component) | Open |
+| 🟢 7 | **G-08** — Workforce training documentation | Low (internal doc) | Open |
+| 🟢 8 | **G-12** — Backup / DR documentation + enable Firestore PITR | Low | Open |
+| 🟢 9 | **G-13** — Audit log for API key access | Low (extends G-02) | Open |
 
 ---
 
