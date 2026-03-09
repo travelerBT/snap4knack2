@@ -24,7 +24,7 @@ Snap4Knack2 offers an opt-in **HIPAA mode** that can be enabled per plugin. When
 | T-04 | **Encryption at rest** | Firestore and Firebase Storage are AES-256 encrypted at rest by Google | GCP platform |
 | T-05 | **PHI image redaction** | `onScreenshotStaged` trigger: screenshot uploaded to private staging bucket → `dlpRedactImage()` runs OCR inspect via Cloud DLP → bounding boxes composited with "HIPAA REDACTED" overlays via `sharp` → clean image written to live path → staging file deleted | `functions/src/index.ts` L117–194, L1090+ |
 | T-06 | **PHI text scrubbing on description** | `submitSnap` DLP-redacts `formData.description` via `dlpRedactText()` before writing to Firestore | `functions/src/index.ts` L553–556 |
-| T-07 | **PHI text scrubbing on comments** | `onCommentCreated` DLP-redacts comment text in HIPAA mode and updates the Firestore doc before any notification is sent | `functions/src/index.ts` L702+ |
+| T-07 | **PHI text scrubbing on comments** | `onCommentCreated` DLP-redacts comment text in HIPAA mode, updates the Firestore doc (`dlpFlagged`, `dlpPending`), and writes a `dlp_scan_completed` audit event recording whether PHI was detected — without re-logging the original text | `functions/src/index.ts` L702+ |
 | T-08 | **Query-string stripping from page URLs** | `submitSnap` calls `stripQueryParams(contextRaw.pageUrl)` for HIPAA plugins; query params may contain patient IDs or session tokens | `functions/src/index.ts` L559–562 |
 | T-09 | **Console log capture disabled** | `submitSnap` sets `consoleErrors: []` when `hipaaEnabled` — console capture is stripped server-side even if the client sends it; widget UI hides the console capture option | `functions/src/index.ts` L536–539 |
 | T-10 | **Private staging bucket** | Storage rules: `snap_screenshots_staging` is write-only from the client (`allow read: if false; allow delete: if false`) — only the Admin SDK (Cloud Function) can read/delete | `storage.rules` L25–31 |
@@ -38,6 +38,7 @@ Snap4Knack2 offers an opt-in **HIPAA mode** that can be enabled per plugin. When
 | T-18 | **Fail-closed DLP** | Both `dlpRedactText` and `dlpRedactImage` throw on error rather than returning unredacted content — snap submission fails rather than storing raw PHI | `functions/src/index.ts` L106, L194 |
 | T-19 | **Firestore role-based access** | Firestore rules enforce: admin can read all, tenant can read own, clients only see plugins they are granted access to, widget tokens scoped to specific tenant+plugin | `firestore.rules` |
 | T-20 | **HTML encoding in emails** | All user-supplied strings are HTML-encoded via `he()` before embedding in email bodies | `functions/src/index.ts` L218–225 |
+| T-21 | **Immutable audit archive — locked Cloud Storage bucket** | `onAuditLogCreated` Firestore trigger mirrors every `audit_log` document to `gs://snap4knack2-audit-archive/audit_archive/YYYY/MM/DD/{logId}.json` immediately on creation. The bucket has a **permanently LOCKED 7-year (2,555-day) retention policy** — no object can be deleted or shortened by any actor, including administrators. Files are written once (`ifGenerationMatch: 0`). This is the tamper-evident record that survives even if the Firestore collection is wiped. | `functions/src/index.ts` `onAuditLogCreated`; GCS bucket `snap4knack2-audit-archive` |
 
 ---
 
@@ -48,7 +49,7 @@ Snap4Knack2 offers an opt-in **HIPAA mode** that can be enabled per plugin. When
 | # | Gap | HIPAA Rule | Risk | Recommended Fix |
 |---|-----|-----------|------|-----------------|
 | **G-01** | ~~**No BAA with SendGrid**~~ **✅ Resolved** | § 164.308(b)(1) | **RESOLVED** — BAA is handled via an external system outside this codebase. | — |
-| **G-02** | ~~**Application-level audit log — partial**~~ **✅ Resolved** | § 164.312(b) — Audit controls | **RESOLVED** — Full audit trail now implemented. Submissions carry submitter identity; comments carry authorId/authorName; status and priority changes write to `snap_submissions/{id}/history`; and HIPAA snap views (tenant and client portal) write immutable `snap_viewed` events to the top-level `audit_log` Firestore collection with viewedBy uid, name, email, role, and timestamp. Firestore rules enforce immutability (no update/delete) and scope reads to the owning tenant. | — |
+| **G-02** | ~~**Application-level audit log — partial**~~ **✅ Resolved** | § 164.312(b) — Audit controls | **RESOLVED** — Comprehensive audit trail covers all ePHI lifecycle events, written to the `audit_log` Firestore collection and mirrored to a locked immutable Cloud Storage archive (T-21): **snap_created** (server-side, every HIPAA submission via `submitSnap`); **snap_viewed** (client-side, tenant + client portal on page mount); **snap_comment_created** (server-side, `onCommentCreated`); **snap_status_changed** and **snap_priority_changed** (client-side, both tenant and client portals); **snap_purged** (server-side, nightly purge function after delete); **dlp_scan_completed** (server-side, every HIPAA comment scan, records flagged: true/false without re-logging PHI). Firestore rules: `allow create if actorUid == caller`, `allow read if isAdmin()`, `allow update/delete: if false`. Admin-only viewer at `/audit-log` with event-type filters, date range, actor role filter, and CSV export. | — |
 | **G-03** | ~~**Screen recordings not DLP-scanned**~~ **✅ Resolved** | § 164.312(a)(2)(iv) | **RESOLVED** — Screen recording is disabled when a plugin has `hipaaEnabled: true`. No recordings are stored for HIPAA plugins. | — |
 | **G-04** | ~~**No formal Risk Assessment document**~~ **✅ Resolved** | § 164.308(a)(1)(ii)(A) — Risk analysis | **RESOLVED** — Formal risk assessment documented in `RISK_ASSESSMENT.md`. Covers 12 threat scenarios with likelihood/impact ratings, current controls, residual risk, and remediation roadmap. Review annually. | — |
 | **G-05** | ~~**No formal Incident Response / Breach Notification plan**~~ **✅ Resolved** | § 164.308(a)(6) — Security Incident Procedures; § 164.400–414 — Breach Notification Rule | **RESOLVED** — Full plan documented in `INCIDENT_RESPONSE_PLAN.md`. Covers incident classification (P1–P4), response team roles, containment procedures, HIPAA breach determination (4-factor test), HHS notification obligations, breach log template, post-incident review process, and customer notification template. | — |
@@ -110,7 +111,7 @@ Snap4Knack2 offers an opt-in **HIPAA mode** that can be enabled per plugin. When
 - [ ] **MFA enforcement for HIPAA tenant accounts** — ❌ G-06
 - [ ] **Frontend idle session timeout** — ❌ G-11
 - [x] Audit controls — GCP Cloud Audit Logs at infrastructure level
-- [x] **Application-level audit log** — ✅ G-02 resolved (submissions, comments, history, + HIPAA `snap_viewed` events in `audit_log`)
+- [x] **Application-level audit log** — ✅ G-02 resolved (snap_created, snap_viewed, snap_comment_created, snap_status_changed, snap_priority_changed, snap_purged, dlp_scan_completed — all written to `audit_log` + mirrored to locked Storage archive)
 - [x] Integrity controls — Firestore atomic writes, DLP fail-closed
 - [x] Person authentication — Firebase Auth email/password
 - [x] Transmission security — HTTPS/TLS enforced by Firebase Hosting and Cloud Functions
@@ -118,6 +119,7 @@ Snap4Knack2 offers an opt-in **HIPAA mode** that can be enabled per plugin. When
 - [x] PHI image redaction — DLP OCR + sharp compositing
 - [x] PHI text scrubbing — DLP deidentifyContent on description + comments
 - [ ] **PHI text scrubbing — annotation shape text** — ❌ G-07
+- [x] **Immutable audit archive** — ✅ T-21 (`gs://snap4knack2-audit-archive`, locked 7-year retention policy, cannot be shortened or deleted by any actor)
 - [x] **Screen recording redaction or disable** — ✅ G-03 resolved (recording disabled in HIPAA mode)
 - [x] Query-string stripping from page URLs
 - [x] Console log capture disabled for HIPAA plugins
@@ -145,7 +147,7 @@ Snap4Knack2 offers an opt-in **HIPAA mode** that can be enabled per plugin. When
 | ✅ — | **G-04** — Document Risk Assessment | — | Resolved (`RISK_ASSESSMENT.md`) |
 | ✅ — | **G-05** — Document Incident Response / Breach Notification Plan | — | Resolved (`INCIDENT_RESPONSE_PLAN.md`) |
 | 🔴 1 | **G-06** — MFA enforcement / prompt for HIPAA tenants | Medium (Firebase MFA or in-app warning) | Open |
-| ✅ — | **G-02** — Application-level audit log (submissions, comments, history, snap_viewed events) | — | Resolved |
+| ✅ — | **G-02** — Full audit trail (snap_created/viewed/commented/status/priority/purged/dlp) + locked Storage archive (T-21) | — | Resolved |
 | 🟠 3 | **G-09** — In-app BAA gate (`baaAcceptedAt` on tenant + UI flow) | Medium (UI + email trigger) | Partial (TOS discloses requirement) |
 | 🟡 4 | **G-07** — DLP scan annotation shape text | Low (add loop in submitSnap) | Open |
 | 🟡 5 | **G-10** — Tighten legacy storage path rules | Low (1-line storage rule change) | Open |

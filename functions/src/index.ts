@@ -18,6 +18,9 @@ const dlpClient = new DlpServiceClient();
 
 const PROJECT_ID = "snap4knack2";
 const STORAGE_BUCKET = "snap4knack2.firebasestorage.app";
+// Dedicated bucket with a LOCKED 7-year retention policy for the HIPAA audit archive.
+// Nothing written here can be deleted or shortened — enforced at the GCS level.
+const AUDIT_ARCHIVE_BUCKET = "snap4knack2-audit-archive";
 const APP_DOMAIN = "https://snap4knack2.web.app";
 const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY || "";
 const SENDGRID_FROM = "info@finemountainconsulting.com";
@@ -1297,7 +1300,7 @@ export const onAuditLogCreated = functions.firestore.onDocumentCreated(
     const dd = String(date.getUTCDate()).padStart(2, "0");
 
     const path = `audit_archive/${yyyy}/${mm}/${dd}/${logId}.json`;
-    const bucket = admin.storage().bucket(STORAGE_BUCKET);
+    const bucket = admin.storage().bucket(AUDIT_ARCHIVE_BUCKET);
     const file = bucket.file(path);
 
     const payload = JSON.stringify({
@@ -1321,6 +1324,6 @@ export const onAuditLogCreated = functions.firestore.onDocumentCreated(
       },
     });
 
-    console.log(`[onAuditLogCreated] Archived ${logId} → gs://${STORAGE_BUCKET}/${path}`);
+    console.log(`[onAuditLogCreated] Archived ${logId} → gs://${AUDIT_ARCHIVE_BUCKET}/${path}`);
   }
 );
