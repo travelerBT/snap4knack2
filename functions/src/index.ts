@@ -34,18 +34,19 @@ const HIPAA_INFO_TYPES: dlpProtos.google.privacy.dlp.v2.IInfoType[] = [
 
 // Custom regex info types — belt-and-suspenders for common PHI formats that DLP
 // may score below threshold when appearing in isolation (no surrounding context).
+// Note: Google DLP regex engine uses RE2 — no lookaheads/lookbehinds.
 const HIPAA_CUSTOM_INFO_TYPES: dlpProtos.google.privacy.dlp.v2.ICustomInfoType[] = [
   {
     // US phone numbers: (NNN) NNN-NNNN, NNN-NNN-NNNN, NNN.NNN.NNNN, NNN NNN NNNN
     infoType: { name: "PHONE_NUMBER_REGEX" },
     likelihood: dlpProtos.google.privacy.dlp.v2.Likelihood.VERY_LIKELY,
-    regex: { pattern: "\\b(\\(\\d{3}\\)[\\s.-]?\\d{3}[-.\\s]\\d{4}|\\d{3}[-.\\s]\\d{3}[-.\\s]\\d{4})\\b" },
+    regex: { pattern: "(\\([0-9]{3}\\)[ .-]?[0-9]{3}[.-][0-9]{4}|[0-9]{3}[ .-][0-9]{3}[ .-][0-9]{4})" },
   },
   {
-    // US SSN: NNN-NN-NNNN, NNN NN NNNN, NNNNNNNNN
+    // US SSN with separators: NNN-NN-NNNN or NNN NN NNNN
     infoType: { name: "SSN_REGEX" },
     likelihood: dlpProtos.google.privacy.dlp.v2.Likelihood.VERY_LIKELY,
-    regex: { pattern: "\\b(?!000|666|9\\d{2})\\d{3}[- ]?(?!00)\\d{2}[- ]?(?!0{4})\\d{4}\\b" },
+    regex: { pattern: "[0-9]{3}[-. ][0-9]{2}[-. ][0-9]{4}" },
   },
 ];
 
