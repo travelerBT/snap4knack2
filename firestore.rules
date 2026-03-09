@@ -113,6 +113,22 @@ service cloud.firestore {
         );
         allow update, delete: if isAuthenticated() && request.auth.uid == resource.data.authorUid;
       }
+
+      match /history/{entryId} {
+        allow read: if isAuthenticated() && (
+          isAdmin() ||
+          get(/databases/$(database)/documents/snap_submissions/$(submissionId)).data.tenantId == request.auth.uid ||
+          clientHasPluginAccess(get(/databases/$(database)/documents/snap_submissions/$(submissionId)).data.pluginId) ||
+          hasTenantShareAccess(get(/databases/$(database)/documents/snap_submissions/$(submissionId)).data.pluginId)
+        );
+        allow create: if isAuthenticated() && (
+          isAdmin() ||
+          get(/databases/$(database)/documents/snap_submissions/$(submissionId)).data.tenantId == request.auth.uid ||
+          clientHasPluginAccess(get(/databases/$(database)/documents/snap_submissions/$(submissionId)).data.pluginId) ||
+          hasTenantShareAccess(get(/databases/$(database)/documents/snap_submissions/$(submissionId)).data.pluginId)
+        );
+        allow update, delete: if false;
+      }
     }
 
     // Client invitations

@@ -12,6 +12,8 @@ import {
   updateDoc,
   doc,
   writeBatch,
+  addDoc,
+  serverTimestamp,
   QueryDocumentSnapshot,
   DocumentData,
 } from 'firebase/firestore';
@@ -178,7 +180,18 @@ export default function SnapFeed() {
   }, [filtered, pluginMap, connectionMap]);
 
   const handleStatusChange = async (id: string, newStatus: string) => {
+    const existing = [...liveItems, ...moreItems].find((s) => s.id === id);
     await updateDoc(doc(db, 'snap_submissions', id), { status: newStatus });
+    if (existing && existing.status !== newStatus) {
+      await addDoc(collection(db, 'snap_submissions', id, 'history'), {
+        changedBy: tenantId,
+        changedByName: user?.displayName || user?.email || 'Team',
+        changeType: 'status',
+        fromValue: existing.status,
+        toValue: newStatus,
+        changedAt: serverTimestamp(),
+      });
+    }
   };
 
   const handleReorder = async (_columnStatus: string, orderedIds: string[]) => {
@@ -470,7 +483,18 @@ function SharedFeed() {
   }, [filtered, shareMap]);
 
   const handleStatusChange = async (id: string, newStatus: string) => {
+    const existing = liveItems.find((s) => s.id === id);
     await updateDoc(doc(db, 'snap_submissions', id), { status: newStatus });
+    if (existing && existing.status !== newStatus) {
+      await addDoc(collection(db, 'snap_submissions', id, 'history'), {
+        changedBy: user?.uid || '',
+        changedByName: user?.displayName || user?.email || 'Team',
+        changeType: 'status',
+        fromValue: existing.status,
+        toValue: newStatus,
+        changedAt: serverTimestamp(),
+      });
+    }
   };
 
   const handleReorder = async (_columnStatus: string, orderedIds: string[]) => {

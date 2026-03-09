@@ -133,7 +133,16 @@ export default function ClientSnapDetail() {
   const updateStatus = async (status: string) => {
     if (!id || !sub) return;
     setUpdating(true);
+    const fromStatus = sub.status;
     await updateDoc(doc(db, 'snap_submissions', id), { status });
+    await addDoc(collection(db, 'snap_submissions', id, 'history'), {
+      changedBy: user?.uid || '',
+      changedByName: user?.displayName || user?.email || 'Client',
+      changeType: 'status',
+      fromValue: fromStatus,
+      toValue: status,
+      changedAt: serverTimestamp(),
+    });
     setUpdating(false);
   };
 

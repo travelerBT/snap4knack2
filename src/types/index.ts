@@ -203,6 +203,16 @@ export interface SnapComment {
   dlpFlagged?: boolean;  // true if DLP redacted any PHI
 }
 
+export interface StatusHistoryEntry {
+  id: string;
+  changedBy: string;       // uid
+  changedByName: string;
+  changeType: 'status' | 'priority';
+  fromValue: string;
+  toValue: string;
+  changedAt: Timestamp;
+}
+
 // ─── Client Invitations ──────────────────────────────────────────────────────
 
 export type InvitationStatus = 'pending' | 'accepted' | 'revoked';

@@ -47,9 +47,9 @@ Snap4Knack2 offers an opt-in **HIPAA mode** that can be enabled per plugin. When
 
 | # | Gap | HIPAA Rule | Risk | Recommended Fix |
 |---|-----|-----------|------|-----------------|
-| **G-01** | **No Business Associate Agreement (BAA) with SendGrid** | § 164.308(b)(1) — BAA with all Business Associates | **HIGH** — SendGrid processes notification emails. Even with PHI stripped from HIPAA notification emails, SendGrid is a Business Associate and a BAA is legally required. | Execute a BAA with SendGrid (Twilio). SendGrid offers a HIPAA BAA under their Advanced plan. Consider switching to a HIPAA-covered transactional email provider (AWS SES with BAA, or Mailgun with BAA) if SendGrid's plan is not feasible. |
-| **G-02** | **No application-level audit log for PHI access** | § 164.312(b) — Audit controls: hardware, software, and procedural mechanisms to record and examine activity in information systems that contain ePHI | **HIGH** — There is no application-level event log recording who viewed, modified, or accessed a HIPAA snap. GCP Cloud Audit Logs exist at the infrastructure level but are not surfaced to covered entities. | Write an `audit_log` Firestore collection on HIPAA snap reads/writes: `{ timestamp, actorUid, actorRole, action, submissionId, tenantId }`. Log events in `onSnapCreated`, Kanban status changes, and direct snap document reads (via a Cloud Function proxy or client-side hook). |
-| **G-03** | **Screen recordings not DLP-scanned** | § 164.312(a)(2)(iv) — Encryption of ePHI in transit and at rest | **HIGH** — Screen recordings of healthcare app screens can contain dense PHI (patient lists, forms, data grids). Currently recordings are stored directly in `snap_recordings/` with no DLP pass. The `onScreenshotStaged` trigger only fires for the staging path, not recordings. | Either (a) disable screen recording entirely when `hipaaEnabled`, or (b) implement a Cloud Storage trigger on `snap_recordings/{tenantId}/` that rewraps recordings through a video-frame-by-frame DLP scan or redaction pipeline. Option (a) is far simpler and recommended until a video DLP pipeline is built. |
+| **G-01** | ~~**No BAA with SendGrid**~~ **✅ Resolved** | § 164.308(b)(1) | **RESOLVED** — BAA is handled via an external system outside this codebase. | — |
+| **G-02** | **Application-level audit log — partial** | § 164.312(b) — Audit controls | **MEDIUM** — Snap submissions, comments, and status/priority changes are now tracked (submissions carry submitter identity; comments carry authorId/authorName; status and priority changes write to `snap_submissions/{id}/history` with changedBy, changedByName, changeType, fromValue, toValue). **Still missing:** read/view access logging (no Firestore read trigger). | Add Cloud Function proxy or client-side hook to log snap opens to an `audit_log` collection for HIPAA snaps. |
+| **G-03** | ~~**Screen recordings not DLP-scanned**~~ **✅ Resolved** | § 164.312(a)(2)(iv) | **RESOLVED** — Screen recording is disabled when a plugin has `hipaaEnabled: true`. No recordings are stored for HIPAA plugins. | — |
 | **G-04** | **No formal Risk Assessment document** | § 164.308(a)(1)(ii)(A) — Risk analysis | **HIGH** — HIPAA requires a documented, organization-wide risk assessment identifying threats to ePHI confidentiality, integrity, and availability. | Produce a Risk Assessment document (can be internal, does not ship with the product) covering: data flows, threat actors, likelihood/impact ratings, and mitigating controls. Review annually. |
 | **G-05** | **No formal Incident Response / Breach Notification plan** | § 164.308(a)(6) — Security Incident Procedures; § 164.400–414 — Breach Notification Rule | **HIGH** — HIPAA requires written procedures for responding to security incidents and notifying patients/HHS within 60 days of a breach. | Document (internal): incident classification criteria, escalation contacts, 60-day HHS notification procedure, patient notification templates, and breach log. This does not need to be in the codebase but must exist. |
 
@@ -110,7 +110,7 @@ Snap4Knack2 offers an opt-in **HIPAA mode** that can be enabled per plugin. When
 - [ ] **MFA enforcement for HIPAA tenant accounts** — ❌ G-06
 - [ ] **Frontend idle session timeout** — ❌ G-11
 - [x] Audit controls — GCP Cloud Audit Logs at infrastructure level
-- [ ] **Application-level PHI access audit log** — ❌ G-02
+- [x] **Application-level audit log — partial** (submissions, comments, status/priority changes tracked; read logging still needed) — ⚠️ G-02
 - [x] Integrity controls — Firestore atomic writes, DLP fail-closed
 - [x] Person authentication — Firebase Auth email/password
 - [x] Transmission security — HTTPS/TLS enforced by Firebase Hosting and Cloud Functions
@@ -144,7 +144,7 @@ Snap4Knack2 offers an opt-in **HIPAA mode** that can be enabled per plugin. When
 | 🔴 2 | **G-04** — Document Risk Assessment | Medium (document, no code) |
 | 🔴 3 | **G-05** — Document Incident Response / Breach Notification Plan | Medium (document, no code) |
 | 🔴 4 | **G-03** — Disable screen recording for HIPAA plugins OR build video DLP pipeline | Low–High (disable = 1 line; video pipeline = high effort) |
-| 🟠 5 | **G-02** — Application-level audit log | Medium (new Firestore collection + logging calls) |
+| 🟠 5 | **G-02** — Read/view access audit log for HIPAA snaps | Medium (Cloud Function proxy or client hook) |
 | 🟠 6 | **G-06** — MFA enforcement / prompt for HIPAA tenants | Medium (Firebase MFA or in-app warning) |
 | 🟠 7 | **G-09** — In-app BAA request flow | Medium (UI + email trigger) |
 | 🟡 8 | **G-07** — DLP scan annotation shape text | Low (add loop in submitSnap) |

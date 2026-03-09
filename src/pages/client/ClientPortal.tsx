@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { collection, query, where, orderBy, onSnapshot, writeBatch, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, writeBatch, doc, updateDoc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import SEO from '../../components/SEO';
@@ -28,7 +28,7 @@ const CAPTURE_ICONS: Record<string, React.ReactNode> = {
 };
 
 export default function ClientPortal() {
-  const { clientAccess } = useAuth();
+  const { clientAccess, user } = useAuth();
   const [submissions, setSubmissions] = useState<SnapSubmission[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -36,7 +36,18 @@ export default function ClientPortal() {
   const [view, setView] = useState<'list' | 'kanban'>('kanban');
 
   const handleStatusChange = async (id: string, newStatus: string) => {
+    const existing = submissions.find((s) => s.id === id);
     await updateDoc(doc(db, 'snap_submissions', id), { status: newStatus });
+    if (existing && existing.status !== newStatus) {
+      await addDoc(collection(db, 'snap_submissions', id, 'history'), {
+        changedBy: user?.uid || '',
+        changedByName: user?.displayName || user?.email || 'Client',
+        changeType: 'status',
+        fromValue: existing.status,
+        toValue: newStatus,
+        changedAt: serverTimestamp(),
+      });
+    }
   };
 
   const handleReorder = async (_columnStatus: string, orderedIds: string[]) => {
