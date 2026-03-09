@@ -114,8 +114,32 @@ async function dlpRedactText(text: string): Promise<string> {
  * Returns the annotated PNG; throws fail-closed on any error.
  */
 async function dlpRedactImage(imageBytes: Buffer): Promise<Buffer> {
+  // Remove sharp's default 268MP pixel limit — screenshots can be large on retina displays
+  (sharp as unknown as { limitInputPixels: (v: boolean) => void }).limitInputPixels(false);
+
   try {
-    // Step 1: find PHI regions
+    // Step 1: resize to a safe processing size (max 2400px wide) before sending to DLP.
+    // This keeps memory usage bounded and speeds up the OCR scan.
+    // We keep the downscaled buffer for compositing too — the overlay bounding boxes
+    // are fractional coords so they scale correctly.
+    const MAX_WIDTH = 2400;
+    const origMeta = await sharp(imageBytes).metadata();
+    const origW = origMeta.width ?? 1;
+    const origH = origMeta.height ?? 1;
+    let workingBuffer = imageBytes;
+    let workingW = origW;
+    let workingH = origH;
+    if (origW > MAX_WIDTH) {
+      workingBuffer = await sharp(imageBytes)
+        .resize({ width: MAX_WIDTH, withoutEnlargement: true })
+        .png()
+        .toBuffer();
+      const wMeta = await sharp(workingBuffer).metadata();
+      workingW = wMeta.width ?? MAX_WIDTH;
+      workingH = wMeta.height ?? origH;
+    }
+
+    // Step 2: DLP inspect to locate PHI bounding boxes via OCR
     const [inspectResponse] = await dlpClient.inspectContent({
       parent: `projects/${PROJECT_ID}/locations/global`,
       inspectConfig: {
@@ -126,30 +150,25 @@ async function dlpRedactImage(imageBytes: Buffer): Promise<Buffer> {
       item: {
         byteItem: {
           type: dlpProtos.google.privacy.dlp.v2.ByteContentItem.BytesType.IMAGE_PNG,
-          data: imageBytes,
+          data: workingBuffer,
         },
       },
     });
 
     const findings = inspectResponse.result?.findings ?? [];
-    if (findings.length === 0) return imageBytes; // no PHI — return original
+    if (findings.length === 0) return imageBytes; // no PHI — return original (full res)
 
-    // Step 2: get image dimensions for coordinate conversion (bounding boxes are 0–1 fractions)
-    const meta = await sharp(imageBytes).metadata();
-    const imgW = meta.width ?? 1;
-    const imgH = meta.height ?? 1;
-
-    // Build one SVG overlay per bounding box
+    // Step 3: composite labeled "HIPAA REDACTED" boxes over each bounding box
     const composites: sharp.OverlayOptions[] = [];
     for (const finding of findings) {
       for (const cl of finding.location?.contentLocations ?? []) {
         for (const box of cl.imageLocation?.boundingBoxes ?? []) {
-          const x = Math.round((box.left   ?? 0) * imgW);
-          const y = Math.round((box.top    ?? 0) * imgH);
-          const w = Math.max(Math.round((box.width  ?? 0) * imgW), 4);
-          const h = Math.max(Math.round((box.height ?? 0) * imgH), 4);
-          // Font size: fits nicely inside the box, clamped between 7px and 13px
-          const fontSize = Math.round(Math.min(Math.max(h * 0.45, 7), 13));
+          const x = Math.round((box.left   ?? 0) * workingW);
+          const y = Math.round((box.top    ?? 0) * workingH);
+          const w = Math.max(Math.round((box.width  ?? 0) * workingW), 4);
+          const h = Math.max(Math.round((box.height ?? 0) * workingH), 4);
+          // Font size: fits nicely inside the box, clamped between 7px and 14px
+          const fontSize = Math.round(Math.min(Math.max(h * 0.45, 7), 14));
           const labelY = Math.round(h / 2 + fontSize * 0.35);
           const svg = [
             `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">`,
@@ -165,7 +184,7 @@ async function dlpRedactImage(imageBytes: Buffer): Promise<Buffer> {
     }
 
     if (composites.length === 0) return imageBytes;
-    return await sharp(imageBytes).composite(composites).png().toBuffer();
+    return await sharp(workingBuffer).composite(composites).png().toBuffer();
   } catch (e) {
     console.error("[DLP] Image redaction error:", e);
     throw e; // fail-closed: don't publish unredacted image
