@@ -159,10 +159,12 @@ async function dlpRedactImage(imageBytes: Buffer): Promise<Buffer> {
     for (const finding of findings) {
       for (const cl of finding.location?.contentLocations ?? []) {
         for (const box of cl.imageLocation?.boundingBoxes ?? []) {
-          const x = Math.round((box.left   ?? 0) * workingW);
-          const y = Math.round((box.top    ?? 0) * workingH);
-          const w = Math.max(Math.round((box.width  ?? 0) * workingW), 4);
-          const h = Math.max(Math.round((box.height ?? 0) * workingH), 4);
+          // Clamp to image bounds — float rounding can push x+w or y+h past the edge
+          const x = Math.max(0, Math.round((box.left   ?? 0) * workingW));
+          const y = Math.max(0, Math.round((box.top    ?? 0) * workingH));
+          const w = Math.min(Math.max(Math.round((box.width  ?? 0) * workingW), 4), workingW - x);
+          const h = Math.min(Math.max(Math.round((box.height ?? 0) * workingH), 4), workingH - y);
+          if (w <= 0 || h <= 0) continue;
           // Font size: fits nicely inside the box, clamped between 7px and 14px
           const fontSize = Math.round(Math.min(Math.max(h * 0.45, 7), 14));
           const labelY = Math.round(h / 2 + fontSize * 0.35);
