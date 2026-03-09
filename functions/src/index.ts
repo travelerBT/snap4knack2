@@ -136,22 +136,26 @@ async function dlpRedactImage(imageBytes: Buffer): Promise<Buffer> {
     }
 
     // Step 2: DLP inspect to locate PHI bounding boxes via OCR
+    // Use IMAGE (auto-detect format) instead of IMAGE_PNG — widget may upload JPEG
+    // Use VERY_UNLIKELY to cast the widest possible net on OCR'd text
     const [inspectResponse] = await dlpClient.inspectContent({
       parent: `projects/${PROJECT_ID}/locations/global`,
       inspectConfig: {
         infoTypes: HIPAA_INFO_TYPES,
         customInfoTypes: HIPAA_CUSTOM_INFO_TYPES,
-        minLikelihood: dlpProtos.google.privacy.dlp.v2.Likelihood.POSSIBLE,
+        minLikelihood: dlpProtos.google.privacy.dlp.v2.Likelihood.VERY_UNLIKELY,
+        includeQuote: true,
       },
       item: {
         byteItem: {
-          type: dlpProtos.google.privacy.dlp.v2.ByteContentItem.BytesType.IMAGE_PNG,
+          type: dlpProtos.google.privacy.dlp.v2.ByteContentItem.BytesType.IMAGE,
           data: workingBuffer,
         },
       },
     });
 
     const findings = inspectResponse.result?.findings ?? [];
+    console.log(`[DLP] Image inspect: ${findings.length} finding(s) — ${findings.map(f => `${f.infoType?.name}(${f.likelihood}):${f.quote ?? "?"}`).join(", ") || "none"}`);
     if (findings.length === 0) return imageBytes; // no PHI — return original (full res)
 
     // Step 3: composite labeled "HIPAA REDACTED" boxes over each bounding box
