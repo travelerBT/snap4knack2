@@ -158,16 +158,18 @@ async function dlpRedactImage(imageBytes: Buffer): Promise<Buffer> {
     console.log(`[DLP] Image inspect: ${findings.length} finding(s) — ${findings.map(f => `${f.infoType?.name}(${f.likelihood}):${f.quote ?? "?"}`).join(", ") || "none"}`);
     if (findings.length === 0) return imageBytes; // no PHI — return original (full res)
 
-    // Step 3: composite labeled "HIPAA REDACTED" boxes over each bounding box
+    // Step 3: composite labeled "HIPAA REDACTED" boxes over each bounding box.
+    // NOTE: DLP bounding box coords for image byte items are already in PIXELS — do NOT
+    // multiply by image dimensions (that was the bug causing all boxes to be skipped).
     const composites: sharp.OverlayOptions[] = [];
     for (const finding of findings) {
       for (const cl of finding.location?.contentLocations ?? []) {
         for (const box of cl.imageLocation?.boundingBoxes ?? []) {
-          // Clamp to image bounds — float rounding can push x+w or y+h past the edge
-          const x = Math.max(0, Math.round((box.left   ?? 0) * workingW));
-          const y = Math.max(0, Math.round((box.top    ?? 0) * workingH));
-          const w = Math.min(Math.max(Math.round((box.width  ?? 0) * workingW), 4), workingW - x);
-          const h = Math.min(Math.max(Math.round((box.height ?? 0) * workingH), 4), workingH - y);
+          // Clamp to image bounds to guard against any off-by-one from DLP
+          const x = Math.max(0, box.left   ?? 0);
+          const y = Math.max(0, box.top    ?? 0);
+          const w = Math.min(Math.max(box.width  ?? 0, 4), workingW - x);
+          const h = Math.min(Math.max(box.height ?? 0, 4), workingH - y);
           if (w <= 0 || h <= 0) continue;
           // Font size: fits nicely inside the box, clamped between 7px and 14px
           const fontSize = Math.round(Math.min(Math.max(h * 0.45, 7), 14));
