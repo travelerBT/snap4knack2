@@ -49,6 +49,9 @@ export default function SnapPluginDetails() {
   const [inviteUrlModal, setInviteUrlModal] = useState<{ open: boolean; url: string; emailError: string }>({ open: false, url: '', emailError: '' });
   const [inviteUrlCopied, setInviteUrlCopied] = useState(false);
 
+  const [hipaaSaving, setHipaaSaving] = useState(false);
+  const [hipaaConfirm, setHipaaConfirm] = useState(false);
+
   // Sharing state
   const [tenantShares, setTenantShares] = useState<TenantShare[]>([]);
   const [availableTenants, setAvailableTenants] = useState<{ uid: string; email: string; displayName: string }[]>([]);
@@ -114,6 +117,39 @@ export default function SnapPluginDetails() {
     if (plugin) setPlugin({ ...plugin, customBranding: branding });
     setSaving(false);
     setModal({ open: true, type: 'success', title: 'Branding saved', message: 'Widget branding has been updated.' });
+  };
+
+  const saveHipaa = async (enable: boolean) => {
+    if (!id) return;
+    setHipaaSaving(true);
+    const updates: Record<string, unknown> = {
+      hipaaEnabled: enable,
+      retentionDays: enable ? 2555 : 365,
+    };
+    if (enable) updates['snapSettings.allowRecording'] = false;
+    await updateDoc(doc(db, 'tenants', tenantId, 'snapPlugins', id), updates);
+    setPlugin((p) =>
+      p
+        ? {
+            ...p,
+            hipaaEnabled: enable,
+            retentionDays: enable ? 2555 : 365,
+            snapSettings: {
+              ...p.snapSettings,
+              allowRecording: enable ? false : p.snapSettings.allowRecording,
+            },
+          }
+        : p
+    );
+    setHipaaSaving(false);
+    setModal({
+      open: true,
+      type: 'success',
+      title: enable ? 'HIPAA mode enabled' : 'HIPAA mode disabled',
+      message: enable
+        ? 'All new snaps will be DLP-scanned. Retention set to 7 years (2,555 days). Existing snaps are not retroactively scanned.'
+        : 'HIPAA mode disabled. Retention reset to 365 days.',
+    });
   };
 
   const handleInvite = async () => {
@@ -317,17 +353,37 @@ export default function SnapPluginDetails() {
               </dd>
             </div>
           </dl>
-          {plugin.hipaaEnabled && (
-            <div className="flex items-center gap-3 bg-green-50 border border-green-200 rounded-lg px-4 py-3 mt-2">
-              <ShieldCheckIcon className="h-5 w-5 text-green-600 flex-shrink-0" />
-              <div>
-                <p className="text-sm font-medium text-green-800">HIPAA Compliant Mode Active</p>
-                <p className="text-xs text-green-600 mt-0.5">
-                  DLP PHI scanning enabled · 7-year retention ({plugin.retentionDays ?? 2555} days) · Screen recording disabled
-                </p>
+          {/* HIPAA toggle */}
+          <div className="border border-gray-200 rounded-lg p-4 mt-2">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <ShieldCheckIcon className={`h-5 w-5 flex-shrink-0 ${plugin.hipaaEnabled ? 'text-green-600' : 'text-gray-400'}`} />
+                <div>
+                  <p className="text-sm font-medium text-gray-900">HIPAA Compliant Mode</p>
+                  <p className="text-xs text-gray-500 mt-0.5">DLP PHI scanning, sanitized emails, 7-year retention</p>
+                </div>
               </div>
+              <button
+                type="button"
+                onClick={() => plugin.hipaaEnabled ? saveHipaa(false) : setHipaaConfirm(true)}
+                disabled={hipaaSaving}
+                className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 ${
+                  plugin.hipaaEnabled ? 'bg-green-600' : 'bg-gray-200'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                    plugin.hipaaEnabled ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
             </div>
-          )}
+            {plugin.hipaaEnabled && (
+              <p className="mt-3 text-xs text-green-700 bg-green-50 rounded-md px-3 py-2">
+                DLP PHI scanning enabled · {plugin.retentionDays ?? 2555}-day retention · Screen recording disabled
+              </p>
+            )}
+          </div>
         </div>
       )}
 
@@ -442,6 +498,17 @@ s.onload=function(){Snap4KnackLoader.init({
         </div>
       )}
       <Modal open={modal.open} type={modal.type} title={modal.title} message={modal.message} onClose={() => setModal((m) => ({ ...m, open: false }))} />
+      <Modal
+        open={hipaaConfirm}
+        type="warning"
+        title="Enable HIPAA mode?"
+        message="This will disable screen recording, set retention to 7 years (2,555 days), and route all new snaps through Google Cloud DLP for PHI scanning. Existing snaps are not retroactively scanned."
+        confirmLabel="Enable HIPAA"
+        cancelLabel="Cancel"
+        onConfirm={() => { setHipaaConfirm(false); saveHipaa(true); }}
+        onClose={() => setHipaaConfirm(false)}
+        loading={hipaaSaving}
+      />
       <Modal
         open={revokeConfirm.open}
         type="warning"
