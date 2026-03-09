@@ -2,8 +2,6 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
-  signInWithPopup,
-  GoogleAuthProvider,
   signOut,
   sendPasswordResetEmail,
   onAuthStateChanged,
@@ -111,11 +109,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const loginWithGoogle = async () => {
-    const provider = new GoogleAuthProvider();
-    await signInWithPopup(auth, provider);
-  };
-
   const logout = async () => {
     await signOut(auth);
   };
@@ -156,7 +149,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     tosAccepted,
     signup,
     login,
-    loginWithGoogle,
     logout,
     resetPassword,
     acceptTerms,
