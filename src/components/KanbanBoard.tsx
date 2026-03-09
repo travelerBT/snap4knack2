@@ -20,7 +20,7 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { PhotoIcon, VideoCameraIcon, CursorArrowRaysIcon, RectangleStackIcon, CommandLineIcon } from '@heroicons/react/24/outline';
+import { PhotoIcon, VideoCameraIcon, CursorArrowRaysIcon, RectangleStackIcon, CommandLineIcon, ShieldCheckIcon } from '@heroicons/react/24/outline';
 import type { SnapSubmission, SnapPlugin } from '../types';
 import { STATUS_OPTIONS, PRIORITY_OPTIONS, CAPTURE_TYPE_LABELS } from '../config/constants';
 
@@ -142,6 +142,12 @@ function SnapCard({
             <span className="text-[10px] font-bold text-gray-400 font-mono flex-shrink-0">#{sub.snapNumber}</span>
           )}
           <span className="text-xs font-semibold text-gray-800 truncate">{sub.formData?.category ?? 'Snap'}</span>
+          {sub.hipaaEnabled && (
+            <span className="inline-flex items-center gap-0.5 flex-shrink-0 px-1 py-0.5 rounded text-[9px] font-bold bg-red-50 text-red-600 border border-red-200">
+              <ShieldCheckIcon className="h-2.5 w-2.5" />
+              HIPAA
+            </span>
+          )}
         </div>
         <span className="flex items-center gap-0.5 text-xs text-gray-400 flex-shrink-0">
           {CAPTURE_ICONS[sub.type]}

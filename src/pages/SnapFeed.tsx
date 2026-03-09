@@ -32,6 +32,7 @@ import {
   Squares2X2Icon,
   ListBulletIcon,
   UsersIcon,
+  ShieldCheckIcon,
 } from '@heroicons/react/24/outline';
 import type { SnapSubmission, SnapPlugin, Connection, TenantShare } from '../types';
 import { STATUS_OPTIONS, PRIORITY_OPTIONS, CAPTURE_TYPE_LABELS } from '../config/constants';
@@ -650,6 +651,12 @@ function SubmissionRow({ sub, pluginName }: { sub: SnapSubmission; pluginName: s
           <span className="text-sm font-medium text-gray-900 truncate">
             {sub.formData?.category ?? 'Snap'}
           </span>
+          {sub.hipaaEnabled && (
+            <span className="inline-flex items-center gap-0.5 flex-shrink-0 px-1.5 py-0.5 rounded text-[10px] font-bold bg-red-50 text-red-600 border border-red-200">
+              <ShieldCheckIcon className="h-3 w-3" />
+              HIPAA
+            </span>
+          )}
           <span className="inline-flex items-center gap-1 text-xs text-gray-500">
             {CAPTURE_ICONS[sub.type]}
             {CAPTURE_TYPE_LABELS[sub.type]}
