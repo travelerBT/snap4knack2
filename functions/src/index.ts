@@ -576,9 +576,6 @@ export const onCommentCreated = functions.firestore.onDocumentCreated(
     const comment = event.data?.data() as Record<string, unknown> | undefined;
     if (!comment) return;
 
-    // Only fan-out when the commenter explicitly checked "Notify".
-    if (comment.notify !== true) return;
-
     const submissionId = event.params.submissionId;
     const submissionDoc = await db.collection("snap_submissions").doc(submissionId).get();
     if (!submissionDoc.exists) return;
@@ -592,18 +589,19 @@ export const onCommentCreated = functions.firestore.onDocumentCreated(
     const pluginDoc = await db.collection("tenants").doc(tenantId).collection("snapPlugins").doc(pluginId).get();
     const hipaaMode = pluginDoc.data()?.hipaaEnabled === true;
 
-    // HIPAA: DLP-redact comment text and update the doc before fan-out
+    // HIPAA: DLP-redact comment text and update the doc — always, regardless of notify flag
     const rawCommentText = (comment.text as string) || "";
     let commentText = he(rawCommentText);
     if (hipaaMode && rawCommentText) {
       const redacted = await dlpRedactText(rawCommentText);
-      if (redacted !== rawCommentText) {
-        await db.collection("snap_submissions").doc(submissionId)
-          .collection("comments").doc(event.params.commentId)
-          .update({ text: redacted, dlpFlagged: true });
-        commentText = he(redacted);
-      }
+      await db.collection("snap_submissions").doc(submissionId)
+        .collection("comments").doc(event.params.commentId)
+        .update({ text: redacted, dlpFlagged: redacted !== rawCommentText });
+      commentText = he(redacted);
     }
+
+    // Only fan-out email when the commenter explicitly checked "Notify".
+    if (comment.notify !== true) return;
 
     const authorUid = (comment.authorUid || comment.authorId) as string | undefined;
 
