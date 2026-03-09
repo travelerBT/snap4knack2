@@ -145,8 +145,8 @@ These Terms are governed by the laws of the State of Colorado, United States, wi
 
 For questions about these Terms or to request a Business Associate Agreement:
 
-**Email:** legal@finemountainconsulting.com  
-**General support:** support@finemountainconsulting.com
+**Email:** info@finemountainconsulting.com  
+**General support:** info@finemountainconsulting.com
 
 Fine Mountain Consulting LLC  
 Colorado, United States
