@@ -60,7 +60,7 @@ Snap4Knack2 offers an opt-in **HIPAA mode** that can be enabled per plugin. When
 | **G-06** | **No MFA enforcement for tenant accounts** | § 164.312(d) — Person or entity authentication | **MEDIUM-HIGH** — Tenant accounts protect HIPAA snap dashboards. Email/password alone is a single factor. | Enforce MFA via Firebase Auth's multi-factor authentication (TOTP or SMS) for tenants with HIPAA-enabled plugins. At minimum, surface a warning in the Snap Plugin Details page prompting HIPAA tenants to enable MFA. |
 | **G-07** | **Annotation shape data not DLP-scanned** | § 164.312(a)(2)(iv) | **MEDIUM** — Users can draw freeform text annotations on screenshots (`annotationData.shapes` with `tool: 'text'`). This string data is stored in Firestore but is never DLP-scanned. | In `submitSnap`, when `hipaaEnabled`, iterate `annotationData.shapes` and DLP-scrub any `shape.text` strings before writing to Firestore. |
 | **G-08** | **No workforce training documentation** | § 164.308(a)(5) — Security Awareness and Training | **MEDIUM** — HIPAA requires documented security awareness training for all workforce members. | Document training program and maintain training records. Out of scope for the codebase itself, but required at the organizational level. |
-| **G-09** | **No documented BAA process for customers** | § 164.308(b)(1) | **MEDIUM** — Covered entities using Snap4Knack must execute a BAA with Fine Mountain Consulting. The website references BAA support but there is no in-app flow. | Add a BAA request flow in the app (e.g., a "Request BAA" button in the Account or HIPAA plugin settings page that triggers an email/CRM workflow). Store BAA acceptance status in the `tenants/{tenantId}` document. |
+| **G-09** | **BAA process for customers — partial** | § 164.308(b)(1) | **LOW-MEDIUM** — The published Terms of Service (March 9, 2026) now explicitly requires covered entities to contact Fine Mountain Consulting LLC at `info@finemountainconsulting.com` to execute a BAA before enabling HIPAA Mode. This satisfies the disclosure obligation. **Still missing:** an in-app BAA request flow and a `baaAcceptedAt` field on the tenant record to programmatically gate HIPAA Mode activation. | Add a "Request BAA" button in HIPAA plugin settings that triggers an email/CRM workflow. Store BAA acceptance status in `tenants/{tenantId}` document and require it before `hipaaEnabled` can be set to `true`. |
 | **G-10** | **Legacy storage path `snaps/{pluginId}/{submissionId}/` has permissive rules** | § 164.312(a)(1) — Access Control | **MEDIUM** — The legacy path allows any authenticated user to read/delete, not just the owning tenant. | Tighten the legacy rule to require tenant ownership, or migrate all remaining data to the new paths and remove the legacy rule. |
 
 ### Medium
@@ -94,13 +94,13 @@ Snap4Knack2 offers an opt-in **HIPAA mode** that can be enabled per plugin. When
 - [ ] **Risk Management Plan documented** — ❌ G-04
 - [x] Assigned Security Responsibility — engineering owns technical controls
 - [x] Workforce Access Management — role-based access (admin/tenant/client/widget)
-- [ ] **Information Access Management — BAA with SendGrid** — ❌ G-01
+- [x] **Information Access Management — BAA with SendGrid** — ✅ G-01 resolved (external)
 - [ ] **Security Awareness Training documentation** — ❌ G-08
 - [ ] **Security Incident Response procedures documented** — ❌ G-05
 - [x] Contingency Plan — GCP automated backups, nightly purge function
 - [ ] **Contingency Plan documented (RTO/RPO)** — ❌ G-12
 - [x] Evaluation — This document serves as the periodic evaluation artifact
-- [ ] **Customer BAA process** — ❌ G-09
+- [x] **Customer BAA process — partial** (TOS requires BAA contact; in-app gate still needed) — ⚠️ G-09
 
 ### Technical Safeguards (§ 164.312)
 
@@ -118,7 +118,7 @@ Snap4Knack2 offers an opt-in **HIPAA mode** that can be enabled per plugin. When
 - [x] PHI image redaction — DLP OCR + sharp compositing
 - [x] PHI text scrubbing — DLP deidentifyContent on description + comments
 - [ ] **PHI text scrubbing — annotation shape text** — ❌ G-07
-- [ ] **Screen recording redaction or disable** — ❌ G-03
+- [x] **Screen recording redaction or disable** — ✅ G-03 resolved (recording disabled in HIPAA mode)
 - [x] Query-string stripping from page URLs
 - [x] Console log capture disabled for HIPAA plugins
 - [x] Private staging bucket (write-only client-side)
@@ -138,16 +138,18 @@ Snap4Knack2 offers an opt-in **HIPAA mode** that can be enabled per plugin. When
 
 ## Priority Order for Remediation
 
-| Priority | Item | Effort |
-|----------|------|--------|
-| 🔴 1 | **G-01** — Execute SendGrid BAA | Low (contract action) |
-| 🔴 2 | **G-04** — Document Risk Assessment | Medium (document, no code) |
-| 🔴 3 | **G-05** — Document Incident Response / Breach Notification Plan | Medium (document, no code) |
-| 🔴 4 | **G-03** — Disable screen recording for HIPAA plugins OR build video DLP pipeline | Low–High (disable = 1 line; video pipeline = high effort) |
-| 🟠 5 | **G-02** — Read/view access audit log for HIPAA snaps | Medium (Cloud Function proxy or client hook) |
-| 🟠 6 | **G-06** — MFA enforcement / prompt for HIPAA tenants | Medium (Firebase MFA or in-app warning) |
-| 🟠 7 | **G-09** — In-app BAA request flow | Medium (UI + email trigger) |
-| 🟡 8 | **G-07** — DLP scan annotation shape text | Low (add loop in submitSnap) |
+| Priority | Item | Effort | Status |
+|----------|------|--------|--------|
+| ✅ — | **G-01** — SendGrid BAA | — | Resolved (external) |
+| ✅ — | **G-03** — Disable screen recording for HIPAA plugins | — | Resolved |
+| 🔴 1 | **G-04** — Document Risk Assessment | Medium (document, no code) | Open |
+| 🔴 2 | **G-05** — Document Incident Response / Breach Notification Plan | Medium (document, no code) | Open |
+| 🟠 3 | **G-02** — Read/view access audit log for HIPAA snaps | Medium (Cloud Function proxy or client hook) | Partial |
+| 🟠 4 | **G-06** — MFA enforcement / prompt for HIPAA tenants | Medium (Firebase MFA or in-app warning) | Open |
+| 🟠 5 | **G-09** — In-app BAA gate (`baaAcceptedAt` on tenant + UI flow) | Medium (UI + email trigger) | Partial (TOS discloses requirement) |
+| 🟡 6 | **G-07** — DLP scan annotation shape text | Low (add loop in submitSnap) | Open |
+| 🟡 7 | **G-10** — Tighten legacy storage path rules | Low (Firestore rules edit) | Open |
+| 🟡 8 | **G-11** — Frontend idle session timeout | Low (client-side idle timer) | Open |
 | 🟡 9 | **G-10** — Tighten legacy storage path rules | Low (1-line storage rule change) |
 | 🟡 10 | **G-11** — Frontend idle session timeout | Low–Medium (idle timer component) |
 | 🟢 11 | **G-08** — Workforce training documentation | Low (internal doc) |
