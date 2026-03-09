@@ -1,4 +1,5 @@
 import * as functions from "firebase-functions/v2";
+import sharp from "sharp";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { onObjectFinalized } from "firebase-functions/v2/storage";
 import * as admin from "firebase-admin";
@@ -78,13 +79,6 @@ const DLP_REPLACEMENTS: Array<{ infoTypes: { name: string }[]; label: string }> 
   { infoTypes: [{ name: "IP_ADDRESS" }],                                                label: "[IP_REDACTED]" },
 ];
 
-// Combined infoTypes list including custom regex types — used in imageRedactionConfigs
-const ALL_INFO_TYPES = [
-  ...HIPAA_INFO_TYPES,
-  { name: "PHONE_NUMBER_REDACTED" },
-  { name: "SSN_REDACTED" },
-];
-
 /** DLP text redaction — replaces PHI tokens inline with [TYPE] placeholders */
 async function dlpRedactText(text: string): Promise<string> {
   if (!text || text.length < 3) return text;
@@ -113,25 +107,65 @@ async function dlpRedactText(text: string): Promise<string> {
   }
 }
 
-/** DLP image redaction — black-boxes PHI regions detected via OCR; returns redacted PNG bytes */
+/**
+ * DLP image redaction — two-step:
+ * 1. inspectContent to locate PHI bounding boxes via OCR
+ * 2. sharp to composite labeled "HIPAA REDACTED" overlays over each region
+ * Returns the annotated PNG; throws fail-closed on any error.
+ */
 async function dlpRedactImage(imageBytes: Buffer): Promise<Buffer> {
   try {
-    const [response] = await dlpClient.redactImage({
+    // Step 1: find PHI regions
+    const [inspectResponse] = await dlpClient.inspectContent({
       parent: `projects/${PROJECT_ID}/locations/global`,
       inspectConfig: {
         infoTypes: HIPAA_INFO_TYPES,
         customInfoTypes: HIPAA_CUSTOM_INFO_TYPES,
         minLikelihood: dlpProtos.google.privacy.dlp.v2.Likelihood.POSSIBLE,
       },
-      byteItem: {
-        type: dlpProtos.google.privacy.dlp.v2.ByteContentItem.BytesType.IMAGE_PNG,
-        data: imageBytes,
+      item: {
+        byteItem: {
+          type: dlpProtos.google.privacy.dlp.v2.ByteContentItem.BytesType.IMAGE_PNG,
+          data: imageBytes,
+        },
       },
-      imageRedactionConfigs: ALL_INFO_TYPES.map((t) => ({ infoType: t })),
     });
-    const redacted = response.redactedImage;
-    if (redacted && redacted.length > 0) return Buffer.from(redacted as Uint8Array);
-    return imageBytes; // no PHI found — return original
+
+    const findings = inspectResponse.result?.findings ?? [];
+    if (findings.length === 0) return imageBytes; // no PHI — return original
+
+    // Step 2: get image dimensions for coordinate conversion (bounding boxes are 0–1 fractions)
+    const meta = await sharp(imageBytes).metadata();
+    const imgW = meta.width ?? 1;
+    const imgH = meta.height ?? 1;
+
+    // Build one SVG overlay per bounding box
+    const composites: sharp.OverlayOptions[] = [];
+    for (const finding of findings) {
+      for (const cl of finding.location?.contentLocations ?? []) {
+        for (const box of cl.imageLocation?.boundingBoxes ?? []) {
+          const x = Math.round((box.left   ?? 0) * imgW);
+          const y = Math.round((box.top    ?? 0) * imgH);
+          const w = Math.max(Math.round((box.width  ?? 0) * imgW), 4);
+          const h = Math.max(Math.round((box.height ?? 0) * imgH), 4);
+          // Font size: fits nicely inside the box, clamped between 7px and 13px
+          const fontSize = Math.round(Math.min(Math.max(h * 0.45, 7), 13));
+          const labelY = Math.round(h / 2 + fontSize * 0.35);
+          const svg = [
+            `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">`,
+            `  <rect width="${w}" height="${h}" rx="2" fill="#1a1a2e"/>`,
+            `  <text x="${Math.round(w / 2)}" y="${labelY}"`,
+            `        font-family="monospace" font-size="${fontSize}" font-weight="bold"`,
+            `        fill="#f87171" text-anchor="middle">HIPAA REDACTED</text>`,
+            `</svg>`,
+          ].join("");
+          composites.push({ input: Buffer.from(svg), top: y, left: x });
+        }
+      }
+    }
+
+    if (composites.length === 0) return imageBytes;
+    return await sharp(imageBytes).composite(composites).png().toBuffer();
   } catch (e) {
     console.error("[DLP] Image redaction error:", e);
     throw e; // fail-closed: don't publish unredacted image
