@@ -115,28 +115,24 @@ async function dlpRedactText(text: string): Promise<string> {
  */
 async function dlpRedactImage(imageBytes: Buffer): Promise<Buffer> {
   // Remove sharp's default 268MP pixel limit — screenshots can be large on retina displays
-  (sharp as unknown as { limitInputPixels: (v: boolean) => void }).limitInputPixels(false);
+  const sharpOpts = { limitInputPixels: false };
 
   try {
     // Step 1: resize to a safe processing size (max 2400px wide) before sending to DLP.
-    // This keeps memory usage bounded and speeds up the OCR scan.
-    // We keep the downscaled buffer for compositing too — the overlay bounding boxes
-    // are fractional coords so they scale correctly.
     const MAX_WIDTH = 2400;
-    const origMeta = await sharp(imageBytes).metadata();
+    const origMeta = await sharp(imageBytes, sharpOpts).metadata();
     const origW = origMeta.width ?? 1;
-    const origH = origMeta.height ?? 1;
     let workingBuffer = imageBytes;
     let workingW = origW;
-    let workingH = origH;
+    let workingH = origMeta.height ?? 1;
     if (origW > MAX_WIDTH) {
-      workingBuffer = await sharp(imageBytes)
+      workingBuffer = await sharp(imageBytes, sharpOpts)
         .resize({ width: MAX_WIDTH, withoutEnlargement: true })
         .png()
         .toBuffer();
-      const wMeta = await sharp(workingBuffer).metadata();
+      const wMeta = await sharp(workingBuffer, sharpOpts).metadata();
       workingW = wMeta.width ?? MAX_WIDTH;
-      workingH = wMeta.height ?? origH;
+      workingH = wMeta.height ?? workingH;
     }
 
     // Step 2: DLP inspect to locate PHI bounding boxes via OCR
@@ -184,7 +180,7 @@ async function dlpRedactImage(imageBytes: Buffer): Promise<Buffer> {
     }
 
     if (composites.length === 0) return imageBytes;
-    return await sharp(workingBuffer).composite(composites).png().toBuffer();
+    return await sharp(workingBuffer, sharpOpts).composite(composites).png().toBuffer();
   } catch (e) {
     console.error("[DLP] Image redaction error:", e);
     throw e; // fail-closed: don't publish unredacted image
