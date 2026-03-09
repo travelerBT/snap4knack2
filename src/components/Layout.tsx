@@ -12,6 +12,7 @@ import {
   Bars3Icon,
   XMarkIcon,
   ChevronDownIcon,
+  ClipboardDocumentListIcon,
 } from '@heroicons/react/24/outline';
 
 const navItems = [
@@ -19,6 +20,7 @@ const navItems = [
   { to: '/connections', label: 'Connections', Icon: LinkIcon },
   { to: '/snap-plugins', label: 'Snap Plugins', Icon: CameraIcon },
   { to: '/snap-feed', label: 'Snap Feed', Icon: QueueListIcon },
+  { to: '/audit-log', label: 'Audit Log', Icon: ClipboardDocumentListIcon },
 ];
 
 const activeClass =

@@ -23,6 +23,7 @@ import SnapDetail from './pages/SnapDetail';
 import Account from './pages/Account';
 import Admin from './pages/Admin';
 import AdminUsers from './pages/AdminUsers';
+import AuditLog from './pages/AuditLog';
 
 // Client portal pages
 import ClientPortal from './pages/client/ClientPortal';
@@ -98,6 +99,7 @@ function AppRoutes() {
         <Route path="/account" element={<Account />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="/admin/users" element={<AdminUsers />} />
+        <Route path="/audit-log" element={<AuditLog />} />
       </Route>
 
       {/* Fallback */}
