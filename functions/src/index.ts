@@ -21,7 +21,9 @@ const APP_DOMAIN = "https://snap4knack2.web.app";
 const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY || "";
 const SENDGRID_FROM = "info@finemountainconsulting.com";
 
-// HIPAA infoTypes scanned in both text and images
+// HIPAA infoTypes scanned in both text and images.
+// IMPORTANT: every built-in type referenced in DLP_REPLACEMENTS below MUST appear here —
+// Google DLP rejects deidentifyContent calls where a deidentifyConfig type is absent from inspectConfig.
 const HIPAA_INFO_TYPES: dlpProtos.google.privacy.dlp.v2.IInfoType[] = [
   { name: "PERSON_NAME" },
   { name: "DATE_OF_BIRTH" },
@@ -30,6 +32,14 @@ const HIPAA_INFO_TYPES: dlpProtos.google.privacy.dlp.v2.IInfoType[] = [
   { name: "EMAIL_ADDRESS" },
   { name: "MEDICAL_RECORD_NUMBER" },
   { name: "US_HEALTHCARE_NPI" },
+  { name: "STREET_ADDRESS" },
+  { name: "US_DEA_NUMBER" },
+  { name: "US_DRIVERS_LICENSE_NUMBER" },
+  { name: "PASSPORT" },
+  { name: "US_BANK_ROUTING_MICR" },
+  { name: "IBAN_CODE" },
+  { name: "CREDIT_CARD_NUMBER" },
+  { name: "IP_ADDRESS" },
 ];
 
 // Custom regex info types — belt-and-suspenders for common PHI formats that DLP
