@@ -38,23 +38,41 @@ const HIPAA_INFO_TYPES: dlpProtos.google.privacy.dlp.v2.IInfoType[] = [
 const HIPAA_CUSTOM_INFO_TYPES: dlpProtos.google.privacy.dlp.v2.ICustomInfoType[] = [
   {
     // US phone numbers: (NNN) NNN-NNNN, NNN-NNN-NNNN, NNN.NNN.NNNN, NNN NNN NNNN
-    infoType: { name: "PHONE_NUMBER_REGEX" },
+    infoType: { name: "PHONE_NUMBER_REDACTED" },
     likelihood: dlpProtos.google.privacy.dlp.v2.Likelihood.VERY_LIKELY,
     regex: { pattern: "(\\([0-9]{3}\\)[ .-]?[0-9]{3}[.-][0-9]{4}|[0-9]{3}[ .-][0-9]{3}[ .-][0-9]{4})" },
   },
   {
     // US SSN with separators: NNN-NN-NNNN or NNN NN NNNN
-    infoType: { name: "SSN_REGEX" },
+    infoType: { name: "SSN_REDACTED" },
     likelihood: dlpProtos.google.privacy.dlp.v2.Likelihood.VERY_LIKELY,
     regex: { pattern: "[0-9]{3}[-. ][0-9]{2}[-. ][0-9]{4}" },
   },
 ];
 
-// Combined infoTypes list including custom regex types — used in deidentifyConfig transformations
+// Per-type replacement labels — maps each info type to a human-friendly redaction token
+const DLP_REPLACEMENTS: Array<{ infoTypes: { name: string }[]; label: string }> = [
+  { infoTypes: [{ name: "PHONE_NUMBER" }, { name: "PHONE_NUMBER_REDACTED" }],          label: "[PHONE_REDACTED]" },
+  { infoTypes: [{ name: "US_SOCIAL_SECURITY_NUMBER" }, { name: "SSN_REDACTED" }],      label: "[SSN_REDACTED]" },
+  { infoTypes: [{ name: "EMAIL_ADDRESS" }],                                             label: "[EMAIL_REDACTED]" },
+  { infoTypes: [{ name: "PERSON_NAME" }],                                               label: "[NAME_REDACTED]" },
+  { infoTypes: [{ name: "DATE_OF_BIRTH" }],                                             label: "[DOB_REDACTED]" },
+  { infoTypes: [{ name: "STREET_ADDRESS" }],                                            label: "[ADDRESS_REDACTED]" },
+  { infoTypes: [{ name: "MEDICAL_RECORD_NUMBER" }],                                     label: "[MRN_REDACTED]" },
+  { infoTypes: [{ name: "US_HEALTHCARE_NPI" }],                                         label: "[NPI_REDACTED]" },
+  { infoTypes: [{ name: "US_DEA_NUMBER" }],                                             label: "[DEA_REDACTED]" },
+  { infoTypes: [{ name: "US_DRIVERS_LICENSE_NUMBER" }],                                 label: "[LICENSE_REDACTED]" },
+  { infoTypes: [{ name: "PASSPORT" }],                                                  label: "[PASSPORT_REDACTED]" },
+  { infoTypes: [{ name: "US_BANK_ROUTING_MICR" }, { name: "IBAN_CODE" }],              label: "[BANK_REDACTED]" },
+  { infoTypes: [{ name: "CREDIT_CARD_NUMBER" }],                                        label: "[CARD_REDACTED]" },
+  { infoTypes: [{ name: "IP_ADDRESS" }],                                                label: "[IP_REDACTED]" },
+];
+
+// Combined infoTypes list including custom regex types — used in imageRedactionConfigs
 const ALL_INFO_TYPES = [
   ...HIPAA_INFO_TYPES,
-  { name: "PHONE_NUMBER_REGEX" },
-  { name: "SSN_REGEX" },
+  { name: "PHONE_NUMBER_REDACTED" },
+  { name: "SSN_REDACTED" },
 ];
 
 /** DLP text redaction — replaces PHI tokens inline with [TYPE] placeholders */
@@ -70,10 +88,10 @@ async function dlpRedactText(text: string): Promise<string> {
       },
       deidentifyConfig: {
         infoTypeTransformations: {
-          transformations: [{
-            infoTypes: ALL_INFO_TYPES,
-            primitiveTransformation: { replaceWithInfoTypeConfig: {} },
-          }],
+          transformations: DLP_REPLACEMENTS.map(({ infoTypes, label }) => ({
+            infoTypes,
+            primitiveTransformation: { replaceConfig: { newValue: { stringValue: label } } },
+          })),
         },
       },
       item: { value: text },
