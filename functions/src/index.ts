@@ -699,9 +699,10 @@ export const onCommentCreated = functions.firestore.onDocumentCreated(
     const snapNumber = submission.snapNumber as number | undefined;
     const category = ((submission.formData as Record<string, unknown>)?.category as string) || "Snap";
 
-    // Check HIPAA mode for this plugin
+    // Check HIPAA mode: plugin flag is authoritative; fall back to the snap doc's own hipaaEnabled
+    // so that snaps created with hipaaEnabled:true (e.g. via API or test scripts) also get redacted.
     const pluginDoc = await db.collection("tenants").doc(tenantId).collection("snapPlugins").doc(pluginId).get();
-    const hipaaMode = pluginDoc.data()?.hipaaEnabled === true;
+    const hipaaMode = pluginDoc.data()?.hipaaEnabled === true || submission.hipaaEnabled === true;
     console.log(`[HIPAA] comment on submission ${submissionId}, plugin ${pluginId}, hipaaMode=${hipaaMode}`);
 
     // HIPAA: DLP-redact comment text and update the doc — always, regardless of notify flag
