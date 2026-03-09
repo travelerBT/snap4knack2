@@ -213,16 +213,25 @@ export interface StatusHistoryEntry {
   changedAt: Timestamp;
 }
 
+export type AuditEventType =
+  | 'snap_created'
+  | 'snap_viewed'
+  | 'snap_comment_created'
+  | 'snap_status_changed'
+  | 'snap_priority_changed'
+  | 'snap_purged';
+
 export interface AuditLogEntry {
-  eventType: 'snap_viewed';
+  eventType: AuditEventType;
   snapId: string;
   tenantId: string;
   pluginId: string;
-  viewedBy: string;          // uid
-  viewedByName: string;
-  viewedByEmail: string;
-  viewedByRole: 'tenant' | 'client' | 'admin';
-  viewedAt: Timestamp;
+  actorUid: string | null;     // null for system / widget (no Firebase Auth session)
+  actorName: string;           // display name, Knack user ID, or 'System'
+  actorEmail: string;          // empty for system / widget events
+  actorRole: 'tenant' | 'client' | 'admin' | 'widget' | 'system';
+  detail?: string;             // e.g. 'status: new → in_progress'
+  eventAt: Timestamp;          // serverTimestamp() on create
 }
 
 // ─── Client Invitations ──────────────────────────────────────────────────────

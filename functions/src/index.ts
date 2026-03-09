@@ -607,6 +607,22 @@ export const submitSnap = functions.https.onRequest(
     });
 
     res.json({ id: newDocRef.id });
+
+    // HIPAA § 164.312(b): log PHI entry into the system (non-blocking, server-side guaranteed)
+    if (hipaaEnabled) {
+      db.collection("audit_log").add({
+        eventType: "snap_created",
+        snapId: newDocRef.id,
+        tenantId,
+        pluginId,
+        actorUid: null,  // widget user — no Firebase Auth session
+        actorName: knackUserId ? `Knack user ${knackUserId}` : "Widget user",
+        actorEmail: "",
+        actorRole: "widget",
+        detail: `category: ${(formData as Record<string, unknown>)?.category ?? "—"}; priority: ${priority}`,
+        eventAt: admin.firestore.FieldValue.serverTimestamp(),
+      }).catch(() => {});  // best-effort — must not block the HTTP response
+    }
   }
 );
 
@@ -717,6 +733,22 @@ export const onCommentCreated = functions.firestore.onDocumentCreated(
     } else {
       // Always clear the pending flag even when HIPAA is off
       await commentRef.update({ dlpPending: false });
+    }
+
+    // HIPAA § 164.312(b): log comment creation on PHI snap (regardless of notify flag)
+    if (hipaaMode) {
+      db.collection("audit_log").add({
+        eventType: "snap_comment_created",
+        snapId: submissionId,
+        tenantId,
+        pluginId,
+        actorUid: ((comment.authorUid || comment.authorId) as string) || null,
+        actorName: (comment.authorName as string) || "Unknown",
+        actorEmail: (comment.authorEmail as string) || "",
+        actorRole: (comment.authorRole as string) || "tenant",
+        detail: "",
+        eventAt: admin.firestore.FieldValue.serverTimestamp(),
+      }).catch(() => {});
     }
 
     // Only fan-out email when the commenter explicitly checked "Notify".
@@ -1188,6 +1220,22 @@ export const purgeExpiredSnaps = onSchedule(
         commentsSnap.docs.forEach((c) => batch.delete(c.ref));
         batch.delete(snapDoc.ref);
         await batch.commit();
+
+        // HIPAA § 164.312(b) + § 164.310(d)(2)(i): log PHI deletion for HIPAA snaps
+        if (data.hipaaEnabled === true) {
+          await db.collection("audit_log").add({
+            eventType: "snap_purged",
+            snapId,
+            tenantId,
+            pluginId: (data.pluginId as string) || "",
+            actorUid: null,
+            actorName: "System (scheduled purge)",
+            actorEmail: "",
+            actorRole: "system",
+            detail: `retentionDays: ${retention}`,
+            eventAt: admin.firestore.FieldValue.serverTimestamp(),
+          }).catch(() => {});
+        }
 
         // Delete Storage files (best-effort)
         const filesToDelete = [

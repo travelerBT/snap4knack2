@@ -45,6 +45,14 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function RequireAdmin({ children }: { children: React.ReactNode }) {
+  const { loading, firebaseUser, isAdmin } = useAuth();
+  if (loading) return null;
+  if (!firebaseUser) return <Navigate to="/login" replace />;
+  if (!isAdmin) return <Navigate to="/dashboard" replace />;
+  return <>{children}</>;
+}
+
 function RequireClient({ children }: { children: React.ReactNode }) {
   const { loading, firebaseUser, isClient } = useAuth();
   if (loading) return null;
@@ -99,7 +107,7 @@ function AppRoutes() {
         <Route path="/account" element={<Account />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="/admin/users" element={<AdminUsers />} />
-        <Route path="/audit-log" element={<AuditLog />} />
+        <Route path="/audit-log" element={<RequireAdmin><AuditLog /></RequireAdmin>} />
       </Route>
 
       {/* Fallback */}

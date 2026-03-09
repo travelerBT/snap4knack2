@@ -50,11 +50,12 @@ export default function SnapDetail() {
       snapId: id,
       tenantId: sub.tenantId,
       pluginId: sub.pluginId,
-      viewedBy: user.uid,
-      viewedByName: user.displayName || user.email || 'Unknown',
-      viewedByEmail: user.email || '',
-      viewedByRole: 'tenant',
-      viewedAt: serverTimestamp(),
+      actorUid: user.uid,
+      actorName: user.displayName || user.email || 'Unknown',
+      actorEmail: user.email || '',
+      actorRole: 'tenant',
+      detail: '',
+      eventAt: serverTimestamp(),
     }).catch(() => { /* non-blocking — log failure must not break the UI */ });
   }, [sub, user, id]);
   const [updating, setUpdating] = useState(false);
@@ -191,6 +192,20 @@ export default function SnapDetail() {
       toValue: status,
       changedAt: serverTimestamp(),
     });
+    if (sub.hipaaEnabled) {
+      addDoc(collection(db, 'audit_log'), {
+        eventType: 'snap_status_changed',
+        snapId: id,
+        tenantId: sub.tenantId,
+        pluginId: sub.pluginId,
+        actorUid: tenantId,
+        actorName: user?.displayName || user?.email || 'Team',
+        actorEmail: user?.email || '',
+        actorRole: 'tenant',
+        detail: `status: ${fromStatus} → ${status}`,
+        eventAt: serverTimestamp(),
+      }).catch(() => {});
+    }
     setUpdating(false);
   };
 
@@ -207,6 +222,20 @@ export default function SnapDetail() {
       toValue: priority,
       changedAt: serverTimestamp(),
     });
+    if (sub.hipaaEnabled) {
+      addDoc(collection(db, 'audit_log'), {
+        eventType: 'snap_priority_changed',
+        snapId: id,
+        tenantId: sub.tenantId,
+        pluginId: sub.pluginId,
+        actorUid: tenantId,
+        actorName: user?.displayName || user?.email || 'Team',
+        actorEmail: user?.email || '',
+        actorRole: 'tenant',
+        detail: `priority: ${fromPriority} → ${priority}`,
+        eventAt: serverTimestamp(),
+      }).catch(() => {});
+    }
     setUpdating(false);
   };
 

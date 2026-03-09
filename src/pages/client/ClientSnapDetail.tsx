@@ -59,11 +59,12 @@ export default function ClientSnapDetail() {
       snapId: id,
       tenantId: sub.tenantId,
       pluginId: sub.pluginId,
-      viewedBy: user.uid,
-      viewedByName: user.displayName || user.email || 'Unknown',
-      viewedByEmail: user.email || '',
-      viewedByRole: 'client',
-      viewedAt: serverTimestamp(),
+      actorUid: user.uid,
+      actorName: user.displayName || user.email || 'Unknown',
+      actorEmail: user.email || '',
+      actorRole: 'client',
+      detail: '',
+      eventAt: serverTimestamp(),
     }).catch(() => { /* non-blocking */ });
   }, [sub, user, id]);
 
@@ -163,6 +164,20 @@ export default function ClientSnapDetail() {
       toValue: status,
       changedAt: serverTimestamp(),
     });
+    if (sub.hipaaEnabled) {
+      addDoc(collection(db, 'audit_log'), {
+        eventType: 'snap_status_changed',
+        snapId: id,
+        tenantId: sub.tenantId,
+        pluginId: sub.pluginId,
+        actorUid: user?.uid || null,
+        actorName: user?.displayName || user?.email || 'Client',
+        actorEmail: user?.email || '',
+        actorRole: 'client',
+        detail: `status: ${fromStatus} → ${status}`,
+        eventAt: serverTimestamp(),
+      }).catch(() => {});
+    }
     setUpdating(false);
   };
 

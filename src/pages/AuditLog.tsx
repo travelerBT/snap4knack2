@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  collection, query, where, orderBy, limit, startAfter,
+  collection, query, orderBy, limit, startAfter,
   getDocs, type DocumentSnapshot, type QueryConstraint,
 } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -19,8 +19,18 @@ const PAGE_SIZE = 50;
 
 interface AuditLogRow extends AuditLogEntry { id: string }
 
+// Color scheme per event type
+const EVENT_BADGE: Record<string, { bg: string; text: string; label: string }> = {
+  snap_created:          { bg: 'bg-green-50',  text: 'text-green-700',  label: 'Created' },
+  snap_viewed:           { bg: 'bg-blue-50',   text: 'text-blue-700',   label: 'Viewed' },
+  snap_comment_created:  { bg: 'bg-yellow-50', text: 'text-yellow-700', label: 'Comment' },
+  snap_status_changed:   { bg: 'bg-orange-50', text: 'text-orange-700', label: 'Status ↗' },
+  snap_priority_changed: { bg: 'bg-orange-50', text: 'text-orange-700', label: 'Priority ↗' },
+  snap_purged:           { bg: 'bg-red-50',    text: 'text-red-700',    label: 'Purged' },
+};
+
 export default function AuditLog() {
-  const { user, isAdmin } = useAuth();
+  const { isAdmin } = useAuth();
   const [rows, setRows] = useState<AuditLogRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -31,18 +41,16 @@ export default function AuditLog() {
   const [search, setSearch] = useState('');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
-  const [roleFilter, setRoleFilter] = useState<'' | 'tenant' | 'client' | 'admin'>('');
+  const [roleFilter, setRoleFilter] = useState<'' | 'tenant' | 'client' | 'admin' | 'widget' | 'system'>('');
+  const [eventFilter, setEventFilter] = useState('');
 
   const buildQuery = useCallback((after?: DocumentSnapshot) => {
     const constraints: QueryConstraint[] = [];
-    if (!isAdmin) {
-      constraints.push(where('tenantId', '==', user?.uid ?? ''));
-    }
-    constraints.push(orderBy('viewedAt', 'desc'));
+    constraints.push(orderBy('eventAt', 'desc'));
     constraints.push(limit(PAGE_SIZE));
     if (after) constraints.push(startAfter(after));
     return query(collection(db, 'audit_log'), ...constraints);
-  }, [isAdmin, user?.uid]);
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -67,34 +75,36 @@ export default function AuditLog() {
     setLoadingMore(false);
   };
 
-  // Client-side filter (date range, role, search term)
+  // Client-side filter
   const filtered = rows.filter((r) => {
-    if (roleFilter && r.viewedByRole !== roleFilter) return false;
-    const dt = r.viewedAt?.toDate?.();
+    if (roleFilter && r.actorRole !== roleFilter) return false;
+    if (eventFilter && r.eventType !== eventFilter) return false;
+    const dt = r.eventAt?.toDate?.();
     if (fromDate && dt && dt < new Date(fromDate)) return false;
     if (toDate && dt && dt > new Date(toDate + 'T23:59:59')) return false;
     if (search.trim()) {
       const q = search.toLowerCase();
       if (
         !r.snapId?.toLowerCase().includes(q) &&
-        !r.viewedByName?.toLowerCase().includes(q) &&
-        !r.viewedByEmail?.toLowerCase().includes(q)
+        !r.actorName?.toLowerCase().includes(q) &&
+        !r.actorEmail?.toLowerCase().includes(q)
       ) return false;
     }
     return true;
   });
 
   const exportCsv = () => {
-    const header = ['Timestamp', 'Event', 'Snap ID', 'Tenant ID', 'Plugin ID', 'Viewed By', 'Email', 'Role'];
+    const header = ['Timestamp', 'Event', 'Snap ID', 'Tenant ID', 'Plugin ID', 'Actor Name', 'Actor Email', 'Actor Role', 'Detail'];
     const csvRows = [header, ...filtered.map((r) => [
-      r.viewedAt?.toDate?.()?.toISOString() ?? '',
+      r.eventAt?.toDate?.()?.toISOString() ?? '',
       r.eventType,
       r.snapId,
       r.tenantId,
       r.pluginId,
-      r.viewedByName,
-      r.viewedByEmail,
-      r.viewedByRole,
+      r.actorName,
+      r.actorEmail,
+      r.actorRole,
+      r.detail ?? '',
     ])];
     const blob = new Blob([csvRows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
@@ -116,7 +126,7 @@ export default function AuditLog() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Audit Log</h1>
             <p className="text-sm text-gray-500 mt-0.5">
-              HIPAA § 164.312(b) — read-access events for HIPAA-enabled submissions
+              HIPAA § 164.312(b) — all PHI lifecycle events: create, access, comment, status change, deletion
             </p>
           </div>
         </div>
@@ -137,11 +147,28 @@ export default function AuditLog() {
           <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
           <input
             type="text"
-            placeholder="Search snap ID, name, or email…"
+            placeholder="Search snap ID, actor name or email…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-9 pr-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
+        </div>
+        {/* Event type filter */}
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-gray-500 font-medium">Event</label>
+          <select
+            value={eventFilter}
+            onChange={(e) => setEventFilter(e.target.value)}
+            className="text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">All events</option>
+            <option value="snap_created">Created</option>
+            <option value="snap_viewed">Viewed</option>
+            <option value="snap_comment_created">Comment</option>
+            <option value="snap_status_changed">Status change</option>
+            <option value="snap_priority_changed">Priority change</option>
+            <option value="snap_purged">Purged</option>
+          </select>
         </div>
         {/* Date from */}
         <div className="flex flex-col gap-1">
@@ -165,7 +192,7 @@ export default function AuditLog() {
         </div>
         {/* Role filter */}
         <div className="flex flex-col gap-1">
-          <label className="text-xs text-gray-500 font-medium">Role</label>
+          <label className="text-xs text-gray-500 font-medium">Actor Role</label>
           <select
             value={roleFilter}
             onChange={(e) => setRoleFilter(e.target.value as typeof roleFilter)}
@@ -175,12 +202,14 @@ export default function AuditLog() {
             <option value="tenant">Tenant</option>
             <option value="client">Client</option>
             <option value="admin">Admin</option>
+            <option value="widget">Widget</option>
+            <option value="system">System</option>
           </select>
         </div>
         {/* Clear */}
-        {(search || fromDate || toDate || roleFilter) && (
+        {(search || fromDate || toDate || roleFilter || eventFilter) && (
           <button
-            onClick={() => { setSearch(''); setFromDate(''); setToDate(''); setRoleFilter(''); }}
+            onClick={() => { setSearch(''); setFromDate(''); setToDate(''); setRoleFilter(''); setEventFilter(''); }}
             className="text-sm text-gray-500 hover:text-gray-700 underline self-end pb-2"
           >
             Clear
@@ -201,7 +230,7 @@ export default function AuditLog() {
             <ShieldCheckIcon className="h-12 w-12 text-gray-300 mb-3" />
             <p className="text-gray-500 font-medium">No audit events found</p>
             <p className="text-gray-400 text-sm mt-1 max-w-xs">
-              Audit events are recorded when a HIPAA-enabled submission is opened. Enable HIPAA mode on a Snap Plugin to start logging.
+              Audit events are recorded for every HIPAA-enabled submission: creation, access, comments, status changes, and scheduled deletion.
             </p>
           </div>
         ) : (
@@ -213,8 +242,9 @@ export default function AuditLog() {
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Timestamp</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Event</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Snap</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Viewed By</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Actor</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Role</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Detail</th>
                     {isAdmin && (
                       <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Tenant ID</th>
                     )}
@@ -222,16 +252,17 @@ export default function AuditLog() {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {filtered.map((r) => {
-                    const dt = r.viewedAt?.toDate?.();
+                    const dt = r.eventAt?.toDate?.();
+                    const badge = EVENT_BADGE[r.eventType] ?? { bg: 'bg-gray-100', text: 'text-gray-700', label: r.eventType };
                     return (
                       <tr key={r.id} className="hover:bg-gray-50">
                         <td className="px-4 py-3 whitespace-nowrap text-gray-700 font-mono text-xs">
                           {dt ? dt.toLocaleString() : '—'}
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap">
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-xs font-medium">
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full ${badge.bg} ${badge.text} text-xs font-medium`}>
                             <ShieldCheckIcon className="h-3 w-3" />
-                            {r.eventType}
+                            {badge.label}
                           </span>
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap">
@@ -243,19 +274,26 @@ export default function AuditLog() {
                           </Link>
                         </td>
                         <td className="px-4 py-3">
-                          <div className="font-medium text-gray-900">{r.viewedByName}</div>
-                          <div className="text-xs text-gray-400">{r.viewedByEmail}</div>
+                          <div className="font-medium text-gray-900">{r.actorName || '—'}</div>
+                          {r.actorEmail && <div className="text-xs text-gray-400">{r.actorEmail}</div>}
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap">
                           <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium ${
-                            r.viewedByRole === 'admin'
+                            r.actorRole === 'admin'
                               ? 'bg-purple-50 text-purple-700'
-                              : r.viewedByRole === 'client'
+                              : r.actorRole === 'client'
                               ? 'bg-green-50 text-green-700'
+                              : r.actorRole === 'widget'
+                              ? 'bg-indigo-50 text-indigo-700'
+                              : r.actorRole === 'system'
+                              ? 'bg-gray-100 text-gray-500'
                               : 'bg-gray-100 text-gray-700'
                           }`}>
-                            {r.viewedByRole}
+                            {r.actorRole}
                           </span>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-gray-500 max-w-[200px] truncate">
+                          {r.detail || '—'}
                         </td>
                         {isAdmin && (
                           <td className="px-4 py-3 font-mono text-xs text-gray-400">{r.tenantId}</td>
@@ -282,7 +320,7 @@ export default function AuditLog() {
 
             <div className="px-4 py-2 bg-gray-50 border-t border-gray-100 text-xs text-gray-400">
               {filtered.length} event{filtered.length !== 1 ? 's' : ''} shown
-              {(search || fromDate || toDate || roleFilter) ? ' (filtered)' : ''}
+              {(search || fromDate || toDate || roleFilter || eventFilter) ? ' (filtered)' : ''}
             </div>
           </>
         )}
@@ -290,3 +328,4 @@ export default function AuditLog() {
     </div>
   );
 }
+

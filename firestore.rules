@@ -157,16 +157,14 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    // HIPAA audit log — immutable read/view events for HIPAA snap access (G-02)
+    // HIPAA audit log — immutable activity events for HIPAA snap lifecycle (G-02)
+    // Server-side events (snap_created, snap_comment_created, snap_purged) are written via
+    // Admin SDK in Cloud Functions, which bypasses these rules entirely.
+    // Client-side events (snap_viewed, snap_status_changed, snap_priority_changed) must
+    // supply actorUid == the caller's UID.
     match /audit_log/{logId} {
-      // Only the authenticated viewer may create their own entry
-      allow create: if isAuthenticated() && request.auth.uid == request.resource.data.viewedBy;
-      // Tenant owner and admins may read entries for their tenant
-      allow read: if isAuthenticated() && (
-        isAdmin() ||
-        request.auth.uid == resource.data.tenantId
-      );
-      // Immutable — no updates or deletes
+      allow create: if isAuthenticated() && request.auth.uid == request.resource.data.actorUid;
+      allow read: if isAdmin();
       allow update, delete: if false;
     }
   }

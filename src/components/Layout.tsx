@@ -20,7 +20,6 @@ const navItems = [
   { to: '/connections', label: 'Connections', Icon: LinkIcon },
   { to: '/snap-plugins', label: 'Snap Plugins', Icon: CameraIcon },
   { to: '/snap-feed', label: 'Snap Feed', Icon: QueueListIcon },
-  { to: '/audit-log', label: 'Audit Log', Icon: ClipboardDocumentListIcon },
 ];
 
 const activeClass =
@@ -87,6 +86,15 @@ export default function Layout() {
                   >
                     <ShieldCheckIcon className="h-4 w-4" />
                     Admin
+                  </NavLink>
+                )}
+                {isAdmin && (
+                  <NavLink
+                    to="/audit-log"
+                    className={({ isActive }) => (isActive ? activeClass : inactiveClass)}
+                  >
+                    <ClipboardDocumentListIcon className="h-4 w-4" />
+                    Audit Log
                   </NavLink>
                 )}
               </div>
@@ -175,6 +183,16 @@ export default function Layout() {
                 >
                   <ShieldCheckIcon className="h-5 w-5" />
                   Admin
+                </NavLink>
+              )}
+              {isAdmin && (
+                <NavLink
+                  to="/audit-log"
+                  onClick={() => setMobileOpen(false)}
+                  className={({ isActive }) => (isActive ? mobileActiveClass : mobileInactiveClass)}
+                >
+                  <ClipboardDocumentListIcon className="h-5 w-5" />
+                  Audit Log
                 </NavLink>
               )}
             </div>
