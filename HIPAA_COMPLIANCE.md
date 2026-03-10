@@ -1,6 +1,6 @@
 # HIPAA Compliance Status — Snap4Knack2
 
-**Last reviewed:** March 9, 2026  
+**Last reviewed:** March 10, 2026  
 **Reviewer:** Engineering  
 **Scope:** Technical and administrative safeguards for HIPAA-enabled plugin mode
 
@@ -13,6 +13,16 @@ Snap4Knack2 offers an opt-in **HIPAA mode** that can be enabled per plugin. When
 ---
 
 ## ✅ Implemented — Verified in Code
+
+### Administrative Safeguards (§ 164.308)
+
+| # | Requirement | Implementation | Reference |
+|---|-------------|----------------|------------|
+| A-01 | **BAA with SendGrid** — Business Associate Agreement | BAA executed externally with SendGrid prior to any PHI transiting email notifications | External — confirmed |
+| A-02 | **Application-level audit trail** | Comprehensive audit log covering all ePHI lifecycle events: `snap_created`, `snap_viewed`, `snap_comment_created`, `snap_status_changed`, `snap_priority_changed`, `snap_purged`, `dlp_scan_completed`. Written to `audit_log` Firestore collection and mirrored to a permanently locked 7-year Cloud Storage archive (T-21). Admin-only viewer at `/audit-log` with filters and CSV export. | `functions/src/index.ts`; `audit_log` collection; `gs://snap4knack2-audit-archive` |
+| A-03 | **Screen recording disabled in HIPAA mode** | `submitSnap` enforces `allowRecording: false` for HIPAA plugins server-side; widget UI hides the recording option | `functions/src/index.ts` |
+| A-04 | **Risk Assessment documented** | Formal risk assessment covering 12 threat scenarios with likelihood/impact ratings, current controls, residual risk, and remediation roadmap | `RISK_ASSESSMENT.md` |
+| A-05 | **Incident Response & Breach Notification Plan** | Full plan covering incident classification (P1–P4), response team roles, containment, HIPAA breach determination (4-factor test), HHS notification obligations, breach log template, and customer notification template | `INCIDENT_RESPONSE_PLAN.md` |
 
 ### Technical Safeguards (§ 164.312)
 
@@ -43,16 +53,6 @@ Snap4Knack2 offers an opt-in **HIPAA mode** that can be enabled per plugin. When
 ---
 
 ## ❌ Missing / Gaps — Action Required
-
-### Critical
-
-| # | Gap | HIPAA Rule | Risk | Recommended Fix |
-|---|-----|-----------|------|-----------------|
-| **G-01** | ~~**No BAA with SendGrid**~~ **✅ Resolved** | § 164.308(b)(1) | **RESOLVED** — BAA is handled via an external system outside this codebase. | — |
-| **G-02** | ~~**Application-level audit log — partial**~~ **✅ Resolved** | § 164.312(b) — Audit controls | **RESOLVED** — Comprehensive audit trail covers all ePHI lifecycle events, written to the `audit_log` Firestore collection and mirrored to a locked immutable Cloud Storage archive (T-21): **snap_created** (server-side, every HIPAA submission via `submitSnap`); **snap_viewed** (client-side, tenant + client portal on page mount); **snap_comment_created** (server-side, `onCommentCreated`); **snap_status_changed** and **snap_priority_changed** (client-side, both tenant and client portals); **snap_purged** (server-side, nightly purge function after delete); **dlp_scan_completed** (server-side, every HIPAA comment scan, records flagged: true/false without re-logging PHI). Firestore rules: `allow create if actorUid == caller`, `allow read if isAdmin()`, `allow update/delete: if false`. Admin-only viewer at `/audit-log` with event-type filters, date range, actor role filter, and CSV export. | — |
-| **G-03** | ~~**Screen recordings not DLP-scanned**~~ **✅ Resolved** | § 164.312(a)(2)(iv) | **RESOLVED** — Screen recording is disabled when a plugin has `hipaaEnabled: true`. No recordings are stored for HIPAA plugins. | — |
-| **G-04** | ~~**No formal Risk Assessment document**~~ **✅ Resolved** | § 164.308(a)(1)(ii)(A) — Risk analysis | **RESOLVED** — Formal risk assessment documented in `RISK_ASSESSMENT.md`. Covers 12 threat scenarios with likelihood/impact ratings, current controls, residual risk, and remediation roadmap. Review annually. | — |
-| **G-05** | ~~**No formal Incident Response / Breach Notification plan**~~ **✅ Resolved** | § 164.308(a)(6) — Security Incident Procedures; § 164.400–414 — Breach Notification Rule | **RESOLVED** — Full plan documented in `INCIDENT_RESPONSE_PLAN.md`. Covers incident classification (P1–P4), response team roles, containment procedures, HIPAA breach determination (4-factor test), HHS notification obligations, breach log template, post-incident review process, and customer notification template. | — |
 
 ### High
 
