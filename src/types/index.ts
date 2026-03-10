@@ -81,6 +81,7 @@ export interface SnapSettings {
   notifyEmails: string[];
   hipaaEnabled?: boolean;
   retentionDays?: number;
+  slackEnabled?: boolean;
 }
 
 export interface CustomBranding {

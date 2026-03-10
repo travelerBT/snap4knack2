@@ -21,7 +21,7 @@ const STORAGE_BUCKET = "snap4knack2.firebasestorage.app";
 // Dedicated bucket with a LOCKED 7-year retention policy for the HIPAA audit archive.
 // Nothing written here can be deleted or shortened — enforced at the GCS level.
 const AUDIT_ARCHIVE_BUCKET = "snap4knack2-audit-archive";
-const APP_DOMAIN = "https://snap4knack2.web.app";
+const APP_DOMAIN = "https://snap4knack.com";
 const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY || "";
 const SENDGRID_FROM = "info@finemountainconsulting.com";
 
@@ -236,6 +236,18 @@ async function getKnackApiKey(secretName: string): Promise<string> {
   return (version.payload?.data?.toString() || "").trim();
 }
 
+async function getSlackWebhook(tenantId: string, pluginId: string): Promise<string | null> {
+  try {
+    const [version] = await secretClient.accessSecretVersion({
+      name: `projects/${PROJECT_ID}/secrets/slack-webhook-${tenantId}-${pluginId}/versions/latest`,
+    });
+    const url = (version.payload?.data?.toString() || "").trim();
+    return url || null;
+  } catch {
+    return null;
+  }
+}
+
 // ── storeKnackApiKey ─────────────────────────────────────────────────────────
 
 export const storeKnackApiKey = functions.https.onCall(
@@ -277,6 +289,83 @@ export const storeKnackApiKey = functions.https.onCall(
     });
 
     return { secretName: `${parent}/secrets/${secretId}/versions/latest` };
+  }
+);
+
+// ── saveSlackWebhook ─────────────────────────────────────────────────────────
+
+export const saveSlackWebhook = functions.https.onCall(
+  { enforceAppCheck: false },
+  async (request) => {
+    if (!request.auth) throw new functions.https.HttpsError("unauthenticated", "Must be signed in.");
+    const tenantId = request.auth.uid;
+    const { pluginId, webhookUrl } = request.data as { pluginId: string; webhookUrl: string };
+    if (!pluginId || !webhookUrl) {
+      throw new functions.https.HttpsError("invalid-argument", "pluginId and webhookUrl are required.");
+    }
+    if (!/^[a-zA-Z0-9_-]+$/.test(pluginId)) {
+      throw new functions.https.HttpsError("invalid-argument", "Invalid pluginId format.");
+    }
+    if (!webhookUrl.startsWith("https://hooks.slack.com/services/")) {
+      throw new functions.https.HttpsError("invalid-argument", "Invalid Slack webhook URL.");
+    }
+    const pluginDoc = await db.collection("tenants").doc(tenantId).collection("snapPlugins").doc(pluginId).get();
+    if (!pluginDoc.exists) {
+      throw new functions.https.HttpsError("not-found", "Plugin not found.");
+    }
+
+    const secretId = `slack-webhook-${tenantId}-${pluginId}`;
+    const parent = `projects/${PROJECT_ID}`;
+    try {
+      await secretClient.createSecret({
+        parent,
+        secretId,
+        secret: { replication: { automatic: {} } },
+      });
+    } catch (e: unknown) {
+      const err = e as { code?: number };
+      if (err.code !== 6) throw e; // 6 = ALREADY_EXISTS
+    }
+    await secretClient.addSecretVersion({
+      parent: `${parent}/secrets/${secretId}`,
+      payload: { data: Buffer.from(webhookUrl.trim()) },
+    });
+    await db.collection("tenants").doc(tenantId).collection("snapPlugins").doc(pluginId).update({
+      "snapSettings.slackEnabled": true,
+    });
+    return { success: true };
+  }
+);
+
+// ── removeSlackWebhook ───────────────────────────────────────────────────────
+
+export const removeSlackWebhook = functions.https.onCall(
+  { enforceAppCheck: false },
+  async (request) => {
+    if (!request.auth) throw new functions.https.HttpsError("unauthenticated", "Must be signed in.");
+    const tenantId = request.auth.uid;
+    const { pluginId } = request.data as { pluginId: string };
+    if (!pluginId) {
+      throw new functions.https.HttpsError("invalid-argument", "pluginId is required.");
+    }
+    if (!/^[a-zA-Z0-9_-]+$/.test(pluginId)) {
+      throw new functions.https.HttpsError("invalid-argument", "Invalid pluginId format.");
+    }
+    const secretName = `projects/${PROJECT_ID}/secrets/slack-webhook-${tenantId}-${pluginId}`;
+    try {
+      const [versions] = await secretClient.listSecretVersions({ parent: secretName });
+      await Promise.all(
+        versions
+          .filter((v) => v.state === "ENABLED")
+          .map((v) => secretClient.disableSecretVersion({ name: v.name! }))
+      );
+    } catch {
+      // Secret may not exist — treat as already removed
+    }
+    await db.collection("tenants").doc(tenantId).collection("snapPlugins").doc(pluginId).update({
+      "snapSettings.slackEnabled": false,
+    });
+    return { success: true };
   }
 );
 
@@ -645,58 +734,136 @@ export const onSnapCreated = functions.firestore.onDocumentCreated(
       db.collection("tenants").doc(tenantId).get(),
     ]);
 
-    const notifyEmails = (pluginDoc.data()?.snapSettings?.notifyEmails as string[]) || [];
+    const pluginData = pluginDoc.data();
+    const notifyEmails = (pluginData?.snapSettings?.notifyEmails as string[]) || [];
     const tenantData = tenantDoc.data();
     const priority = snap.priority as string | undefined;
     const isCritical = priority === "critical";
-    const hipaaMode = pluginDoc.data()?.hipaaEnabled === true;
-
-    // If not critical and notifyOnSnap is off, skip.
-    if (!isCritical && !tenantData?.notifyOnSnap) return;
-    if (notifyEmails.length === 0) return;
-
-    const key = await getSendGridKey();
-    if (!key) return;
-    sgMail.setApiKey(key);
+    const hipaaMode = pluginData?.hipaaEnabled === true;
+    const slackEnabled = pluginData?.snapSettings?.slackEnabled === true;
 
     const category = ((snap.formData as Record<string, unknown>)?.category as string) || "Snap";
     const rawPageUrl = ((snap.context as Record<string, unknown>)?.pageUrl as string) || "";
     const pageUrl = hipaaMode ? "" : rawPageUrl;
     const snapDashboardUrl = `${APP_DOMAIN}/snap-feed/${event.params.submissionId}`;
-    const pluginName = he(pluginDoc.data()?.name || "Plugin");
+    const pluginName = he(pluginData?.name || "Plugin");
 
-    if (isCritical) {
-      await Promise.all(
-        notifyEmails.map((email) =>
-          sgMail.send({
-            from: SENDGRID_FROM,
-            ...criticalSnapEmail({
-              recipientEmail: email,
-              pluginName,
-              category: he(category),
-              pageUrl: he(pageUrl),
-              dashboardUrl: snapDashboardUrl,
-              hipaaMode,
-            }),
-          })
-        )
-      );
-    } else {
-      await Promise.all(
-        notifyEmails.map((email) =>
-          sgMail.send({
-            from: SENDGRID_FROM,
-            ...snapNotificationEmail({
-              recipientEmail: email,
-              pluginName,
-              category: he(category),
-              pageUrl: he(pageUrl),
-              dashboardUrl: snapDashboardUrl,
-              hipaaMode,
-            }),
-          })
-        )
-      );
+    // ── Email notifications ───────────────────────────────────────────────────
+    if ((isCritical || tenantData?.notifyOnSnap) && notifyEmails.length > 0) {
+      const key = await getSendGridKey();
+      if (key) {
+        sgMail.setApiKey(key);
+        if (isCritical) {
+          await Promise.all(
+            notifyEmails.map((email) =>
+              sgMail.send({
+                from: SENDGRID_FROM,
+                ...criticalSnapEmail({
+                  recipientEmail: email,
+                  pluginName,
+                  category: he(category),
+                  pageUrl: he(pageUrl),
+                  dashboardUrl: snapDashboardUrl,
+                  hipaaMode,
+                }),
+              })
+            )
+          );
+        } else {
+          await Promise.all(
+            notifyEmails.map((email) =>
+              sgMail.send({
+                from: SENDGRID_FROM,
+                ...snapNotificationEmail({
+                  recipientEmail: email,
+                  pluginName,
+                  category: he(category),
+                  pageUrl: he(pageUrl),
+                  dashboardUrl: snapDashboardUrl,
+                  hipaaMode,
+                }),
+              })
+            )
+          );
+        }
+      }
+    }
+
+    // ── Slack notification ────────────────────────────────────────────────────
+    if (slackEnabled) {
+      try {
+        const webhookUrl = await getSlackWebhook(tenantId, pluginId);
+        if (webhookUrl) {
+          const snapNumber = snap.snapNumber as number | undefined;
+          const status = (snap.status as string) || "new";
+          const rawDescription = ((snap.formData as Record<string, unknown>)?.description as string) || "";
+          const description = hipaaMode ? "[Redacted for HIPAA]" : rawDescription;
+          const reporter =
+            ((snap.context as Record<string, unknown>)?.knackUserName as string) ||
+            ((snap.context as Record<string, unknown>)?.knackUserId as string) ||
+            "Unknown";
+          const screenshotUrl = hipaaMode ? null : ((snap.screenshotUrl as string | null) ?? null);
+
+          const priorityLabel: Record<string, string> = {
+            low: "\uD83D\uDFE2 Low", medium: "\uD83D\uDFE1 Medium", high: "\uD83D\uDFE0 High", critical: "\uD83D\uDD34 Critical",
+          };
+          const statusLabel: Record<string, string> = {
+            new: "New", in_progress: "In Progress", ready_for_testing: "Ready for Testing",
+            resolved: "Resolved", archived: "Archived",
+          };
+
+          const headerText = snapNumber
+            ? `New Snap #${snapNumber} \u2014 ${pluginName}`
+            : `New Snap \u2014 ${pluginName}`;
+
+          const blocks: unknown[] = [
+            { type: "header", text: { type: "plain_text", text: headerText, emoji: true } },
+            {
+              type: "section",
+              fields: [
+                { type: "mrkdwn", text: `*Category*\n${category}` },
+                { type: "mrkdwn", text: `*Priority*\n${priorityLabel[priority ?? ""] || priority || "\u2014"}` },
+                { type: "mrkdwn", text: `*Status*\n${statusLabel[status] || status}` },
+                { type: "mrkdwn", text: `*Reporter*\n${reporter}` },
+              ],
+            },
+          ];
+
+          if (description) {
+            blocks.push({
+              type: "section",
+              text: { type: "mrkdwn", text: `*Description*\n${description}` },
+            });
+          }
+
+          if (pageUrl) {
+            blocks.push({
+              type: "section",
+              text: { type: "mrkdwn", text: `*Page*\n${pageUrl}` },
+            });
+          }
+
+          if (screenshotUrl) {
+            blocks.push({ type: "image", image_url: screenshotUrl, alt_text: "Snap screenshot" });
+          }
+
+          blocks.push({
+            type: "actions",
+            elements: [
+              {
+                type: "button",
+                text: { type: "plain_text", text: "View Snap \u2192", emoji: true },
+                url: snapDashboardUrl,
+                style: "primary",
+              },
+            ],
+          });
+
+          await axios.post(webhookUrl, { blocks });
+        }
+      } catch (e) {
+        console.error("[Slack] Failed to post snap notification:", e);
+      }
     }
   }
 );

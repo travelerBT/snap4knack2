@@ -17,11 +17,12 @@ import {
   ExclamationCircleIcon,
   LinkIcon,
   ShieldCheckIcon,
+  BoltIcon,
 } from '@heroicons/react/24/outline';
 import type { SnapPlugin, Connection, ClientInvitation, KnackRole, TenantShare } from '../types';
 import { WIDGET_BASE_URL } from '../config/constants';
 
-const TABS = ['Details', 'Roles', 'Embed Code', 'Branding', 'Portal', 'Sharing'] as const;
+const TABS = ['Details', 'Roles', 'Embed Code', 'Branding', 'Portal', 'Sharing', 'Integrations'] as const;
 type Tab = typeof TABS[number];
 
 export default function SnapPluginDetails() {
@@ -58,6 +59,12 @@ export default function SnapPluginDetails() {
   const [shareEmail, setShareEmail] = useState('');
   const [sharing, setSharing] = useState(false);
   const [revokeShareConfirm, setRevokeShareConfirm] = useState<{ open: boolean; shareId: string }>({ open: false, shareId: '' });
+
+  // Slack integration state
+  const [slackWebhookInput, setSlackWebhookInput] = useState('');
+  const [slackSaving, setSlackSaving] = useState(false);
+  const [slackRemoving, setSlackRemoving] = useState(false);
+  const [slackDisconnectConfirm, setSlackDisconnectConfirm] = useState(false);
 
   useEffect(() => {
     if (!tenantId || !id) return;
@@ -150,6 +157,44 @@ export default function SnapPluginDetails() {
         ? 'All new snaps will be DLP-scanned. Retention set to 7 years (2,555 days). Existing snaps are not retroactively scanned.'
         : 'HIPAA mode disabled. Retention reset to 365 days.',
     });
+  };
+
+  const saveSlackIntegration = async () => {
+    if (!id || !slackWebhookInput.startsWith('https://hooks.slack.com/services/')) return;
+    setSlackSaving(true);
+    try {
+      const saveSlackWebhookFn = httpsCallable<{ pluginId: string; webhookUrl: string }, { success: boolean }>(
+        functions, 'saveSlackWebhook'
+      );
+      await saveSlackWebhookFn({ pluginId: id, webhookUrl: slackWebhookInput });
+      if (plugin) setPlugin({ ...plugin, snapSettings: { ...plugin.snapSettings, slackEnabled: true } });
+      setSlackWebhookInput('');
+      setModal({ open: true, type: 'success', title: 'Slack connected', message: 'New snaps will now be posted to your Slack channel.' });
+    } catch (e: unknown) {
+      const err = e as { message?: string };
+      setModal({ open: true, type: 'error', title: 'Failed to connect Slack', message: err.message || 'An error occurred.' });
+    } finally {
+      setSlackSaving(false);
+    }
+  };
+
+  const removeSlackIntegration = async () => {
+    if (!id) return;
+    setSlackDisconnectConfirm(false);
+    setSlackRemoving(true);
+    try {
+      const removeSlackWebhookFn = httpsCallable<{ pluginId: string }, { success: boolean }>(
+        functions, 'removeSlackWebhook'
+      );
+      await removeSlackWebhookFn({ pluginId: id });
+      if (plugin) setPlugin({ ...plugin, snapSettings: { ...plugin.snapSettings, slackEnabled: false } });
+      setModal({ open: true, type: 'success', title: 'Slack disconnected', message: 'Slack notifications have been disabled for this plugin.' });
+    } catch (e: unknown) {
+      const err = e as { message?: string };
+      setModal({ open: true, type: 'error', title: 'Failed to disconnect Slack', message: err.message || 'An error occurred.' });
+    } finally {
+      setSlackRemoving(false);
+    }
   };
 
   const handleInvite = async () => {
@@ -452,6 +497,65 @@ s.onload=function(){Snap4KnackLoader.init({
         />
       )}
 
+      {activeTab === 'Integrations' && (
+        <div className="bg-white shadow rounded-lg p-6">
+          <div className="flex items-center gap-3 mb-5">
+            <BoltIcon className="h-5 w-5 text-yellow-500" />
+            <h3 className="text-base font-semibold text-gray-900">Integrations</h3>
+          </div>
+          <div className="border border-gray-200 rounded-lg p-4">
+            <div className="flex items-center gap-2 mb-1">
+              <p className="text-sm font-medium text-gray-900">Slack</p>
+              {plugin.snapSettings.slackEnabled && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                  Connected
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-gray-500 mb-4">
+              Post a message to a Slack channel when a new snap is submitted. Paste the{' '}
+              <span className="font-medium">Incoming Webhook URL</span> from your Slack workspace.
+            </p>
+            {plugin.snapSettings.slackEnabled ? (
+              <div className="flex items-start gap-3">
+                <p className="flex-1 text-sm text-green-700 bg-green-50 rounded-md px-3 py-2">
+                  Snap notifications are being posted to Slack.
+                </p>
+                <button
+                  onClick={() => setSlackDisconnectConfirm(true)}
+                  disabled={slackRemoving}
+                  className="flex-shrink-0 border border-red-300 text-red-600 hover:bg-red-50 text-sm font-medium px-4 py-2 rounded-lg disabled:opacity-50"
+                >
+                  {slackRemoving ? 'Removing…' : 'Disconnect'}
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <input
+                  type="url"
+                  value={slackWebhookInput}
+                  onChange={(e) => setSlackWebhookInput(e.target.value)}
+                  placeholder="https://hooks.slack.com/services/…"
+                  className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm font-mono"
+                />
+                {slackWebhookInput && !slackWebhookInput.startsWith('https://hooks.slack.com/services/') && (
+                  <p className="text-xs text-red-600">
+                    Must be a valid Slack Incoming Webhook URL (starts with https://hooks.slack.com/services/).
+                  </p>
+                )}
+                <button
+                  onClick={saveSlackIntegration}
+                  disabled={slackSaving || !slackWebhookInput.startsWith('https://hooks.slack.com/services/')}
+                  className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg disabled:opacity-50"
+                >
+                  {slackSaving ? 'Saving…' : 'Save'}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Invite URL fallback modal */}
       {inviteUrlModal.open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-40">
@@ -528,6 +632,17 @@ s.onload=function(){Snap4KnackLoader.init({
         cancelLabel="Cancel"
         onConfirm={doRevokeShare}
         onClose={() => setRevokeShareConfirm({ open: false, shareId: '' })}
+      />
+      <Modal
+        open={slackDisconnectConfirm}
+        type="warning"
+        title="Disconnect Slack?"
+        message="Snap notifications will stop being posted to Slack. You can reconnect at any time."
+        confirmLabel="Disconnect"
+        cancelLabel="Cancel"
+        onConfirm={removeSlackIntegration}
+        onClose={() => setSlackDisconnectConfirm(false)}
+        loading={slackRemoving}
       />
     </div>
   );
