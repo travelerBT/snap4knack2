@@ -16,68 +16,86 @@ import {
   HashtagIcon,
   ArrowsUpDownIcon,
   ShieldCheckIcon,
+  XCircleIcon,
 } from '@heroicons/react/24/outline';
 
-const features = [
+// hipaa: 'yes' = fully available, 'modified' = available with restrictions, 'no' = not available
+const features: { Icon: React.ElementType; title: string; description: string; hipaa: 'yes' | 'modified' | 'no'; hipaaNote?: string }[] = [
   {
     Icon: CameraIcon,
     title: 'Multi-Mode Capture',
     description: 'Full page, select area, pin element, or screen recording up to 30 seconds — users pick the right tool for the job.',
+    hipaa: 'modified',
+    hipaaNote: 'Screen recording disabled in HIPAA mode',
   },
   {
     Icon: PencilSquareIcon,
     title: 'Annotation Tools',
     description: 'Freehand pen, rectangles, arrows, text labels, and blur/redact — annotate directly on the screenshot before submitting.',
+    hipaa: 'yes',
   },
   {
     Icon: CommandLineIcon,
     title: 'Console Output Capture',
     description: 'Optionally attach the full browser console (all log levels + unhandled errors) with every snap — no DevTools needed.',
+    hipaa: 'no',
+    hipaaNote: 'Disabled in HIPAA mode — console logs may contain PHI',
   },
   {
     Icon: UserGroupIcon,
     title: 'Role-Based Widget',
     description: 'The floating widget is gated to specific Knack user roles. Everyone else never sees it.',
+    hipaa: 'yes',
   },
   {
     Icon: Squares2X2Icon,
     title: 'Kanban + Drag & Drop',
     description: 'Real-time Kanban board across New, In Progress, Resolved, and Archived. Drag cards between columns or reorder within a column.',
+    hipaa: 'yes',
   },
   {
     Icon: UserGroupIcon,
     title: 'Client Portal',
     description: 'Invite clients with a one-click link. They get their own real-time portal — same Kanban view, same annotations, no login friction.',
+    hipaa: 'yes',
   },
   {
     Icon: ChatBubbleLeftEllipsisIcon,
     title: 'Threaded Comments',
     description: 'Staff and clients can discuss any snap with threaded comments. New posts appear instantly — no refresh required.',
+    hipaa: 'yes',
   },
   {
     Icon: BellAlertIcon,
     title: 'Email Notifications',
     description: 'Automatic email alerts when a new snap is submitted or a comment is posted — so nothing falls through the cracks.',
+    hipaa: 'modified',
+    hipaaNote: 'PHI stripped from notifications in HIPAA mode',
   },
   {
     Icon: VideoCameraIcon,
     title: 'Screen Recording',
     description: 'Record up to 30 seconds of screen activity to capture bugs that are impossible to explain with a single screenshot.',
+    hipaa: 'no',
+    hipaaNote: 'Not available in HIPAA mode',
   },
   {
     Icon: HashtagIcon,
     title: 'Auto Snap Numbers',
     description: 'Every snap gets a unique sequential ID (#1, #2, ...) scoped to your account — easy to reference in conversations or tickets.',
+    hipaa: 'yes',
   },
   {
     Icon: ArrowsUpDownIcon,
     title: 'Priority & Reordering',
     description: 'Set Low / Medium / High / Critical priority on any snap, and drag to reorder within columns to reflect what needs attention first.',
+    hipaa: 'yes',
   },
   {
     Icon: CheckCircleIcon,
     title: 'Status Tracking',
     description: 'Move snaps through New → In Progress → Resolved → Archived. Staff and clients see status changes in real time.',
+    hipaa: 'yes',
   },
 ];
 
@@ -252,13 +270,33 @@ export default function Home() {
             A complete visual feedback and bug-tracking system built specifically for Knack-powered applications.
           </p>
           <div className="mt-12 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {features.map(({ Icon, title, description }) => (
-              <div key={title} className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+            {features.map(({ Icon, title, description, hipaa, hipaaNote }) => (
+              <div key={title} className="bg-white rounded-xl shadow-sm p-6 border border-gray-100 flex flex-col">
                 <div className="bg-blue-50 rounded-lg p-3 w-fit">
                   <Icon className="h-6 w-6 text-blue-600" />
                 </div>
                 <h3 className="mt-4 text-base font-semibold text-gray-900">{title}</h3>
-                <p className="mt-2 text-sm text-gray-500">{description}</p>
+                <p className="mt-2 text-sm text-gray-500 flex-1">{description}</p>
+                <div className="mt-4">
+                  {hipaa === 'yes' && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700 ring-1 ring-inset ring-green-600/20">
+                      <ShieldCheckIcon className="h-3.5 w-3.5" />
+                      HIPAA Ready
+                    </span>
+                  )}
+                  {hipaa === 'modified' && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20" title={hipaaNote}>
+                      <ShieldCheckIcon className="h-3.5 w-3.5" />
+                      {hipaaNote ?? 'HIPAA (with restrictions)'}
+                    </span>
+                  )}
+                  {hipaa === 'no' && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-red-50 px-2.5 py-1 text-xs font-medium text-red-600 ring-1 ring-inset ring-red-600/20" title={hipaaNote}>
+                      <XCircleIcon className="h-3.5 w-3.5" />
+                      {hipaaNote ?? 'Not available in HIPAA mode'}
+                    </span>
+                  )}
+                </div>
               </div>
             ))}
           </div>
