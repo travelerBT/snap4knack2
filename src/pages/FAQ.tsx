@@ -213,8 +213,8 @@ export default function FAQ() {
           <div className="flex gap-4 text-sm">
             <Link to="/contact" className="hover:text-white transition-colors">Contact</Link>
             <Link to="/faq" className="hover:text-white transition-colors">FAQ</Link>
-            <a href="/legal/privacy-policy" className="hover:text-white transition-colors">Privacy</a>
-            <a href="/legal/terms-of-service" className="hover:text-white transition-colors">Terms</a>
+            <Link to="/legal/privacy-policy" className="hover:text-white transition-colors">Privacy</Link>
+            <Link to="/legal/terms-of-service" className="hover:text-white transition-colors">Terms</Link>
           </div>
         </div>
       </footer>

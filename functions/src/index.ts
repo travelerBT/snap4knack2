@@ -25,6 +25,9 @@ const APP_DOMAIN = "https://snap4knack.com";
 const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY || "";
 const SENDGRID_FROM = "info@finemountainconsulting.com";
 
+// gRPC status code 6 = ALREADY_EXISTS (used when creating Secret Manager secrets)
+const SECRET_ALREADY_EXISTS = 6;
+
 // HIPAA infoTypes scanned in both text and images.
 // IMPORTANT: every built-in type referenced in DLP_REPLACEMENTS below MUST appear here —
 // Google DLP rejects deidentifyContent calls where a deidentifyConfig type is absent from inspectConfig.
@@ -280,7 +283,7 @@ export const storeKnackApiKey = functions.https.onCall(
       });
     } catch (e: unknown) {
       const err = e as { code?: number };
-      if (err.code !== 6) throw e; // 6 = ALREADY_EXISTS
+      if (err.code !== SECRET_ALREADY_EXISTS) throw e;
     }
 
     await secretClient.addSecretVersion({
@@ -324,7 +327,7 @@ export const saveSlackWebhook = functions.https.onCall(
       });
     } catch (e: unknown) {
       const err = e as { code?: number };
-      if (err.code !== 6) throw e; // 6 = ALREADY_EXISTS
+      if (err.code !== SECRET_ALREADY_EXISTS) throw e;
     }
     await secretClient.addSecretVersion({
       parent: `${parent}/secrets/${secretId}`,
@@ -442,9 +445,7 @@ export const inviteClient = functions.https.onCall(
     }
 
     // Create invitation doc first — this always succeeds regardless of email
-    const token = Array.from(crypto.getRandomValues(new Uint8Array(16)))
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join("");
+    const token = randomUUID().replace(/-/g, "");
 
     const invRef = await db.collection("client_invitations").add({
       email,
@@ -974,7 +975,7 @@ export const onCommentCreated = functions.firestore.onDocumentCreated(
         const userDoc = await db.collection("users").doc(uid).get();
         if (!userDoc.exists) return;
         const userData = userDoc.data()!;
-        if (!userData.notifyOnComment) return;
+        if (userData.notifyOnComment === false) return;
         const recipientEmail = userData.email as string;
         if (!recipientEmail) return;
 
@@ -1049,7 +1050,7 @@ export const shareFeedWithTenant = functions.https.onCall(
       .where("pluginId", "==", pluginId)
       .get();
     const alreadyActive = existingSnap.docs.some(
-      (d) => d.data().grantedTenantId === granteeUid && d.data().status === "active"
+      (d) => d.data()?.grantedTenantId === granteeUid && d.data()?.status === "active"
     );
     if (alreadyActive) {
       throw new functions.https.HttpsError("already-exists", "This plugin is already shared with that account.");

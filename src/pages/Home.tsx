@@ -370,8 +370,8 @@ export default function Home() {
             <Link to="/contact" className="hover:text-white transition-colors">Contact</Link>
             <Link to="/faq" className="hover:text-white transition-colors">FAQ</Link>
             <Link to="/hipaa" className="hover:text-white transition-colors">HIPAA</Link>
-            <a href="/legal/privacy-policy" className="hover:text-white transition-colors">Privacy</a>
-            <a href="/legal/terms-of-service" className="hover:text-white transition-colors">Terms</a>
+            <Link to="/legal/privacy-policy" className="hover:text-white transition-colors">Privacy</Link>
+            <Link to="/legal/terms-of-service" className="hover:text-white transition-colors">Terms</Link>
           </div>
         </div>
       </footer>

@@ -60,7 +60,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             displayName: fbUser.displayName || '',
             role: 'tenant',
             roles: ['tenant'],
-            createdAt: serverTimestamp() as ReturnType<typeof serverTimestamp> as User['createdAt'],
+            createdAt: serverTimestamp() as User['createdAt'],
           };
           await setDoc(doc(db, 'users', fbUser.uid), newUser);
           setUser(newUser);
