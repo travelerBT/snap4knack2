@@ -199,30 +199,6 @@ function ProductScreenshots() {
 }
 
 export default function Home() {
-  const [form, setForm] = useState({ name: '', email: '', company: '', message: '' });
-  const [sending, setSending] = useState(false);
-  const [sent, setSent] = useState(false);
-  const [sendError, setSendError] = useState('');
-
-  const handleContact = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSending(true);
-    setSendError('');
-    try {
-      const res = await fetch('https://us-central1-snap4knack2.cloudfunctions.net/contactForm', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
-      });
-      if (!res.ok) throw new Error('Server error');
-      setSent(true);
-    } catch {
-      setSendError('Something went wrong. Please email us directly at info@finemountainconsulting.com');
-    } finally {
-      setSending(false);
-    }
-  };
-
   return (
     <div className="min-h-screen bg-white flex flex-col">
       <SEO path="/home" />
@@ -242,13 +218,13 @@ export default function Home() {
             Add a role-gated screenshot widget to your Knack application in minutes. Capture screenshots, recordings, console logs, and annotations — then manage everything in a real-time Kanban board.
           </p>
           <div className="mt-10 flex flex-col sm:flex-row gap-4 justify-center">
-            <a
-              href="#contact"
+            <Link
+              to="/contact"
               className="inline-flex items-center gap-2 bg-white text-[#192f52] font-semibold px-6 py-3 rounded-lg hover:bg-blue-50 transition-colors"
             >
               Get in Touch
               <ArrowRightIcon className="h-4 w-4" />
-            </a>
+            </Link>
             <Link
               to="/login"
               className="inline-flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white font-semibold px-6 py-3 rounded-lg transition-colors"
@@ -367,93 +343,18 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Contact */}
-      <section id="contact" className="py-20 px-4 bg-gray-50">
-        <div className="max-w-2xl mx-auto">
-          <h2 className="text-3xl font-bold text-center text-gray-900">Get in Touch</h2>
-          <p className="mt-3 text-center text-gray-500">
-            Interested in Snap4Knack for your team? We'd love to hear from you.
-          </p>
-
-          {sent ? (
-            <div className="mt-10 bg-green-50 border border-green-200 rounded-xl p-8 text-center">
-              <CheckCircleIcon className="h-10 w-10 text-green-500 mx-auto mb-3" />
-              <p className="text-green-800 font-semibold text-lg">Message sent!</p>
-              <p className="text-green-700 text-sm mt-1">We'll be in touch shortly.</p>
-            </div>
-          ) : (
-            <form onSubmit={handleContact} className="mt-10 bg-white rounded-xl shadow-sm border border-gray-100 p-8 space-y-5">
-              <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Name <span className="text-red-500">*</span></label>
-                  <input
-                    required
-                    type="text"
-                    value={form.name}
-                    onChange={(e) => setForm({ ...form, name: e.target.value })}
-                    className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                    placeholder="Jane Smith"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Email <span className="text-red-500">*</span></label>
-                  <input
-                    required
-                    type="email"
-                    value={form.email}
-                    onChange={(e) => setForm({ ...form, email: e.target.value })}
-                    className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                    placeholder="jane@example.com"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Company / Organization</label>
-                <input
-                  type="text"
-                  value={form.company}
-                  onChange={(e) => setForm({ ...form, company: e.target.value })}
-                  className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                  placeholder="Acme Corp"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Message <span className="text-red-500">*</span></label>
-                <textarea
-                  required
-                  rows={5}
-                  value={form.message}
-                  onChange={(e) => setForm({ ...form, message: e.target.value })}
-                  className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-                  placeholder="Tell us about your Knack setup and what you're looking for…"
-                />
-              </div>
-              {sendError && <p className="text-sm text-red-600">{sendError}</p>}
-              <button
-                type="submit"
-                disabled={sending}
-                className="w-full inline-flex items-center justify-center gap-2 bg-[#192f52] hover:bg-blue-900 text-white font-semibold px-6 py-3 rounded-lg transition-colors disabled:opacity-60"
-              >
-                {sending ? 'Sending…' : 'Send Message'}
-                {!sending && <ArrowRightIcon className="h-4 w-4" />}
-              </button>
-            </form>
-          )}
-        </div>
-      </section>
-
       {/* CTA */}
       <section className="py-16 px-4 bg-[#192f52]">
         <div className="max-w-2xl mx-auto text-center">
           <h2 className="text-2xl font-bold text-white">Ready to get started?</h2>
           <p className="mt-3 text-blue-200">Get in touch and we'll set up your account.</p>
-          <a
-            href="#contact"
+          <Link
+            to="/contact"
             className="mt-6 inline-flex items-center gap-2 bg-white text-[#192f52] font-semibold px-6 py-3 rounded-lg hover:bg-blue-50 transition-colors"
           >
             Contact Us
             <ArrowRightIcon className="h-4 w-4" />
-          </a>
+          </Link>
         </div>
       </section>
 
@@ -466,7 +367,7 @@ export default function Home() {
           </div>
           <p className="text-sm">© {new Date().getFullYear()} Fine Mountain Consulting LLC</p>
           <div className="flex gap-4 text-sm">
-            <a href="#contact" className="hover:text-white transition-colors">Contact</a>
+            <Link to="/contact" className="hover:text-white transition-colors">Contact</Link>
             <Link to="/faq" className="hover:text-white transition-colors">FAQ</Link>
             <Link to="/hipaa" className="hover:text-white transition-colors">HIPAA</Link>
             <a href="/legal/privacy-policy" className="hover:text-white transition-colors">Privacy</a>

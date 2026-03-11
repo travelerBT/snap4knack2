@@ -107,7 +107,7 @@ export default function Hipaa() {
           </p>
           <div className="mt-10 flex flex-col sm:flex-row gap-4 justify-center">
             <a
-              href="/home#contact"
+              href="/contact"
               className="inline-flex items-center gap-2 bg-white text-[#192f52] font-semibold px-6 py-3 rounded-lg hover:bg-blue-50 transition-colors"
             >
               Talk to Us About HIPAA
@@ -235,7 +235,7 @@ export default function Hipaa() {
               A BAA is required between your organization and any vendor that handles PHI on your behalf. Snap4Knack supports BAAs — please contact us before deploying HIPAA-enabled plugins so we can execute the agreement prior to any PHI entering the system.
             </p>
             <a
-              href="/home#contact"
+              href="/contact"
               className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-yellow-700 hover:text-yellow-900"
             >
               Contact us about a BAA
@@ -254,7 +254,7 @@ export default function Hipaa() {
             Talk to us about your Knack setup, BAA requirements, and how Snap4Knack can fit into your healthcare workflow.
           </p>
           <a
-            href="/home#contact"
+            href="/contact"
             className="mt-8 inline-flex items-center gap-2 bg-white text-[#192f52] font-semibold px-6 py-3 rounded-lg hover:bg-blue-50 transition-colors"
           >
             Get in Touch
@@ -272,7 +272,7 @@ export default function Hipaa() {
           </div>
           <p className="text-sm">© {new Date().getFullYear()} Fine Mountain Consulting LLC</p>
           <div className="flex gap-4 text-sm">
-            <a href="/home#contact" className="hover:text-white transition-colors">Contact</a>
+            <a href="/contact" className="hover:text-white transition-colors">Contact</a>
             <Link to="/faq" className="hover:text-white transition-colors">FAQ</Link>
             <Link to="/hipaa" className="hover:text-white transition-colors">HIPAA</Link>
             <a href="/legal/privacy-policy" className="hover:text-white transition-colors">Privacy</a>

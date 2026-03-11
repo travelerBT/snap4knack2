@@ -24,7 +24,7 @@ const faqs: { category: string; items: { q: string; a: string | React.ReactNode 
         q: 'How do I get an account?',
         a: (
           <>
-            Accounts are set up manually by our team. <Link to="/home#contact" className="text-blue-600 hover:underline">Get in touch</Link> and we'll have you up and running quickly.
+            Accounts are set up manually by our team. <Link to="/contact" className="text-blue-600 hover:underline">Get in touch</Link> and we'll have you up and running quickly.
           </>
         ),
       },
@@ -193,7 +193,7 @@ export default function FAQ() {
             We're happy to walk you through how Snap4Knack fits your specific setup.
           </p>
           <Link
-            to="/home#contact"
+            to="/contact"
             className="mt-6 inline-flex items-center gap-2 bg-[#192f52] hover:bg-blue-900 text-white font-semibold px-6 py-3 rounded-lg transition-colors"
           >
             Get in Touch
@@ -211,7 +211,7 @@ export default function FAQ() {
           </div>
           <p className="text-sm">© {new Date().getFullYear()} Fine Mountain Consulting LLC</p>
           <div className="flex gap-4 text-sm">
-            <Link to="/home#contact" className="hover:text-white transition-colors">Contact</Link>
+            <Link to="/contact" className="hover:text-white transition-colors">Contact</Link>
             <Link to="/faq" className="hover:text-white transition-colors">FAQ</Link>
             <a href="/legal/privacy-policy" className="hover:text-white transition-colors">Privacy</a>
             <a href="/legal/terms-of-service" className="hover:text-white transition-colors">Terms</a>

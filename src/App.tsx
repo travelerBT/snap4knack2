@@ -11,6 +11,7 @@ import LegalPage from './pages/LegalPage';
 import AcceptInvite from './pages/AcceptInvite';
 import FAQ from './pages/FAQ';
 import Hipaa from './pages/Hipaa';
+import Contact from './pages/Contact';
 
 // Tenant / Admin pages
 import Dashboard from './pages/Dashboard';
@@ -72,6 +73,7 @@ function AppRoutes() {
       <Route path="/login" element={<Login />} />
       <Route path="/faq" element={<FAQ />} />
       <Route path="/hipaa" element={<Hipaa />} />
+      <Route path="/contact" element={<Contact />} />
       <Route path="/legal/:page" element={<LegalPage />} />
       <Route path="/accept-invite" element={<AcceptInvite />} />
 

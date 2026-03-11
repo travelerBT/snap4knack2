@@ -34,6 +34,9 @@ export default function WebsiteNav() {
             <NavLink to="/faq" className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors">
               FAQ
             </NavLink>
+            <NavLink to="/contact" className="text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors">
+              Contact
+            </NavLink>
             <NavLink to="/login" className="text-sm font-medium text-blue-600 hover:text-blue-700 border border-blue-600 rounded-lg px-4 py-2 hover:bg-blue-50 transition-colors">
               Sign in
             </NavLink>
@@ -49,6 +52,7 @@ export default function WebsiteNav() {
         <div className="md:hidden border-t border-gray-200 px-4 py-4">
           <NavLink to="/hipaa" className="block text-sm font-medium text-gray-600 py-2">HIPAA</NavLink>
           <NavLink to="/faq" className="block text-sm font-medium text-gray-600 py-2">FAQ</NavLink>
+          <NavLink to="/contact" className="block text-sm font-medium text-gray-600 py-2">Contact</NavLink>
           <NavLink to="/login" className="block text-sm font-medium text-blue-600 py-2">Sign in</NavLink>
         </div>
       )}
