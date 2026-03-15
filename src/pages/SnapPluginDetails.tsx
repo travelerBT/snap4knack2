@@ -84,8 +84,10 @@ export default function SnapPluginDetails() {
         if (p.appType === 'react') {
           setEmbedTab('react');
         }
-        const connDoc = await getDoc(doc(db, 'tenants', tenantId, 'connections', p.connectionId));
-        if (connDoc.exists()) setConnection({ id: connDoc.id, ...connDoc.data() } as Connection);
+        if (p.connectionId) {
+          const connDoc = await getDoc(doc(db, 'tenants', tenantId, 'connections', p.connectionId));
+          if (connDoc.exists()) setConnection({ id: connDoc.id, ...connDoc.data() } as Connection);
+        }
       }
       const pluginInvitations = invSnap.docs
         .filter((d) => d.data().pluginIds?.includes(id))
