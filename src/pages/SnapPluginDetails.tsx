@@ -81,6 +81,9 @@ export default function SnapPluginDetails() {
       if (pluginDoc.exists()) {
         const p = { id: pluginDoc.id, ...pluginDoc.data() } as SnapPlugin;
         setPlugin(p);
+        if (p.appType === 'react') {
+          setEmbedTab('react');
+        }
         const connDoc = await getDoc(doc(db, 'tenants', tenantId, 'connections', p.connectionId));
         if (connDoc.exists()) setConnection({ id: connDoc.id, ...connDoc.data() } as Connection);
       }
@@ -335,7 +338,12 @@ export default function SnapPluginDetails() {
         <div className="flex items-start justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">{plugin.name}</h1>
-            <p className="text-sm text-gray-400 mt-1">{connection?.name} · {plugin.selectedRoles.includes('*') ? 'All users' : `${plugin.selectedRoles.length} role${plugin.selectedRoles.length !== 1 ? 's' : ''}`}</p>
+            <p className="text-sm text-gray-400 mt-1">
+              {plugin.appType === 'react'
+                ? 'React / Firebase App · All logged-in users'
+                : `${connection?.name} · ${plugin.selectedRoles.includes('*') ? 'All users' : `${plugin.selectedRoles.length} role${plugin.selectedRoles.length !== 1 ? 's' : ''}`}`
+              }
+            </p>
           </div>
           <button
             onClick={toggleStatus}
@@ -353,7 +361,7 @@ export default function SnapPluginDetails() {
       {/* Tabs */}
       <div className="border-b border-gray-200 mb-6">
         <nav className="flex -mb-px space-x-8 overflow-x-auto">
-          {TABS.map((tab) => (
+          {TABS.filter((tab) => !(tab === 'Roles' && plugin.appType === 'react')).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -438,7 +446,7 @@ export default function SnapPluginDetails() {
         <RolesTab plugin={plugin} connection={connection} onSave={saveRoles} saving={saving} />
       )}
 
-      {activeTab === 'Embed Code' && connection && (
+      {activeTab === 'Embed Code' && (
         <div className="bg-white shadow rounded-lg p-6">
           {/* Knack / React toggle */}
           <div className="flex rounded-lg border border-gray-200 overflow-hidden w-fit mb-5">
@@ -460,7 +468,7 @@ export default function SnapPluginDetails() {
             </button>
           </div>
 
-          {embedTab === 'knack' && (
+          {embedTab === 'knack' && connection && (
             <>
               <h3 className="text-base font-semibold text-gray-900 mb-2">Embed in Knack</h3>
               <p className="text-sm text-gray-500 mb-4">
@@ -492,6 +500,13 @@ s.onload=function(){Snap4KnackLoader.init({
                 </ul>
               </div>
             </>
+          )}
+
+          {embedTab === 'knack' && !connection && (
+            <div className="bg-yellow-50 rounded-lg px-4 py-4 text-sm text-yellow-700">
+              <p className="font-medium">No Knack connection linked to this plugin.</p>
+              <p className="text-yellow-600 text-xs mt-0.5">This is a React / Firebase plugin. Switch to the React tab to get the embed snippet.</p>
+            </div>
           )}
 
           {embedTab === 'react' && (

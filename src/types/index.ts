@@ -94,6 +94,7 @@ export interface SnapPlugin {
   id: string;
   tenantId: string;
   connectionId: string;
+  appType?: 'knack' | 'react'; // 'knack' requires a connection; 'react' does not
   name: string;
   status: PluginStatus;
   selectedRoles: string[]; // KnackRole keys e.g. ['object_1', 'object_3']
