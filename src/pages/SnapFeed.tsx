@@ -71,6 +71,7 @@ export default function SnapFeed() {
   const [statusFilter, setStatusFilter] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
+  const [sourceFilter, setSourceFilter] = useState('');
 
   useEffect(() => {
     if (!tenantId) return;
@@ -101,6 +102,7 @@ export default function SnapFeed() {
     if (statusFilter) constraints.push(where('status', '==', statusFilter));
     if (typeFilter) constraints.push(where('type', '==', typeFilter));
     if (priorityFilter) constraints.push(where('priority', '==', priorityFilter));
+    if (sourceFilter) constraints.push(where('source', '==', sourceFilter));
 
     const q = query(collection(db, 'snap_submissions'), ...constraints);
     const unsub = onSnapshot(q, (snap) => {
@@ -111,7 +113,7 @@ export default function SnapFeed() {
     });
     return unsub;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenantId, pluginFilter, statusFilter, typeFilter, priorityFilter]);
+  }, [tenantId, pluginFilter, statusFilter, typeFilter, priorityFilter, sourceFilter]);
 
   const handleLoadMore = async () => {
     const cursor = lastMoreDoc ?? lastLiveDoc;
@@ -128,6 +130,7 @@ export default function SnapFeed() {
     if (statusFilter) constraints.push(where('status', '==', statusFilter));
     if (typeFilter) constraints.push(where('type', '==', typeFilter));
     if (priorityFilter) constraints.push(where('priority', '==', priorityFilter));
+    if (sourceFilter) constraints.push(where('source', '==', sourceFilter));
 
     const q = query(collection(db, 'snap_submissions'), ...constraints);
     const snap = await getDocs(q);
@@ -253,7 +256,7 @@ export default function SnapFeed() {
 
       {/* Filter bar */}
       <div className="bg-white shadow rounded-lg p-4 mb-6">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-6">
           {/* Search */}
           <div className="relative">
             <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -303,6 +306,16 @@ export default function SnapFeed() {
           >
             <option value="">All priorities</option>
             {PRIORITY_OPTIONS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
+          </select>
+          {/* Source */}
+          <select
+            value={sourceFilter}
+            onChange={(e) => setSourceFilter(e.target.value)}
+            className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+          >
+            <option value="">All sources</option>
+            <option value="knack">Knack</option>
+            <option value="react">React</option>
           </select>
         </div>
       </div>

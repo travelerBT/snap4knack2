@@ -37,6 +37,8 @@ export default function SnapPluginDetails() {
   const [activeTab, setActiveTab] = useState<Tab>('Details');
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [embedTab, setEmbedTab] = useState<'knack' | 'react'>('knack');
+  const [copiedReact, setCopiedReact] = useState(false);
 
   // Invite state
   const [inviteEmail, setInviteEmail] = useState('');
@@ -438,35 +440,116 @@ export default function SnapPluginDetails() {
 
       {activeTab === 'Embed Code' && connection && (
         <div className="bg-white shadow rounded-lg p-6">
-          <h3 className="text-base font-semibold text-gray-900 mb-2">Embed in Knack</h3>
-          <p className="text-sm text-gray-500 mb-4">
-            Paste this code into your Knack app's JavaScript area (Builder → Settings → API & Code → JavaScript).
-          </p>
-          <div className="relative">
-            <pre className="bg-gray-900 text-green-400 text-xs rounded-lg p-4 overflow-x-auto leading-relaxed">
+          {/* Knack / React toggle */}
+          <div className="flex rounded-lg border border-gray-200 overflow-hidden w-fit mb-5">
+            <button
+              onClick={() => setEmbedTab('knack')}
+              className={`px-5 py-2 text-sm font-medium transition-colors ${
+                embedTab === 'knack' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              Knack
+            </button>
+            <button
+              onClick={() => setEmbedTab('react')}
+              className={`px-5 py-2 text-sm font-medium border-l border-gray-200 transition-colors ${
+                embedTab === 'react' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              React / Firebase
+            </button>
+          </div>
+
+          {embedTab === 'knack' && (
+            <>
+              <h3 className="text-base font-semibold text-gray-900 mb-2">Embed in Knack</h3>
+              <p className="text-sm text-gray-500 mb-4">
+                Paste this code into your Knack app's JavaScript area (Builder → Settings → API & Code → JavaScript).
+              </p>
+              <div className="relative">
+                <pre className="bg-gray-900 text-green-400 text-xs rounded-lg p-4 overflow-x-auto leading-relaxed">
 {`(function(){var s=document.createElement('script');
 s.src='${WIDGET_BASE_URL}/widget/loader.js';
 s.onload=function(){Snap4KnackLoader.init({
   pluginId:'${plugin.id}',tenantId:'${tenantId}',appId:'${connection.appId}',
   primaryColor:'${plugin.customBranding?.primaryColor ?? '#3b82f6'}',position:'${plugin.customBranding?.position ?? 'bottom-right'}'
 })};document.head.appendChild(s)})();`}
-            </pre>
-            <button
-              onClick={copyEmbed}
-              className="absolute top-3 right-3 bg-gray-700 hover:bg-gray-600 text-white text-xs px-3 py-1.5 rounded-md flex items-center gap-1.5"
-            >
-              {copied ? <CheckIcon className="h-3 w-3" /> : <ClipboardDocumentIcon className="h-3 w-3" />}
-              {copied ? 'Copied!' : 'Copy'}
-            </button>
-          </div>
-          <div className="mt-4 bg-blue-50 rounded-lg px-4 py-3 text-sm text-blue-700">
-            <p className="font-medium">How it works:</p>
-            <ul className="mt-1 list-disc list-inside space-y-1 text-blue-600 text-xs">
-              <li>The loader detects the logged-in Knack user and their role</li>
-              <li>Only users whose role matches the selected roles will see the ● Snap button</li>
-              <li>Users with non-matching roles will not see anything</li>
-            </ul>
-          </div>
+                </pre>
+                <button
+                  onClick={copyEmbed}
+                  className="absolute top-3 right-3 bg-gray-700 hover:bg-gray-600 text-white text-xs px-3 py-1.5 rounded-md flex items-center gap-1.5"
+                >
+                  {copied ? <CheckIcon className="h-3 w-3" /> : <ClipboardDocumentIcon className="h-3 w-3" />}
+                  {copied ? 'Copied!' : 'Copy'}
+                </button>
+              </div>
+              <div className="mt-4 bg-blue-50 rounded-lg px-4 py-3 text-sm text-blue-700">
+                <p className="font-medium">How it works:</p>
+                <ul className="mt-1 list-disc list-inside space-y-1 text-blue-600 text-xs">
+                  <li>The loader detects the logged-in Knack user and their role</li>
+                  <li>Only users whose role matches the selected roles will see the ● Snap button</li>
+                  <li>Users with non-matching roles will not see anything</li>
+                </ul>
+              </div>
+            </>
+          )}
+
+          {embedTab === 'react' && (
+            <>
+              <h3 className="text-base font-semibold text-gray-900 mb-2">Embed in a React / Firebase App</h3>
+              <p className="text-sm text-gray-500 mb-4">
+                Add this snippet after Firebase Auth confirms a logged-in user (e.g. inside a <code className="font-mono bg-gray-100 px-1 rounded">useEffect</code>).
+              </p>
+              <div className="relative">
+                <pre className="bg-gray-900 text-green-400 text-xs rounded-lg p-4 overflow-x-auto leading-relaxed">
+{`import { useEffect } from 'react';
+import { getAuth, onAuthStateChanged } from 'firebase/auth';
+
+useEffect(() => {
+  const auth = getAuth();
+  return onAuthStateChanged(auth, (user) => {
+    if (!user) return;
+    const s = document.createElement('script');
+    s.src = '${WIDGET_BASE_URL}/widget/loader.js';
+    s.onload = () => {
+      window.Snap4KnackLoader.initReact({
+        pluginId: '${plugin.id}',
+        tenantId: '${tenantId}',
+        userId: user.uid,
+        userEmail: user.email ?? '',
+        primaryColor: '${plugin.customBranding?.primaryColor ?? '#3b82f6'}',
+        position: '${plugin.customBranding?.position ?? 'bottom-right'}',
+      });
+    };
+    document.head.appendChild(s);
+  });
+}, []);`}
+                </pre>
+                <button
+                  onClick={() => {
+                    if (!plugin) return;
+                    const code = `import { useEffect } from 'react';\nimport { getAuth, onAuthStateChanged } from 'firebase/auth';\n\nuseEffect(() => {\n  const auth = getAuth();\n  return onAuthStateChanged(auth, (user) => {\n    if (!user) return;\n    const s = document.createElement('script');\n    s.src = '${WIDGET_BASE_URL}/widget/loader.js';\n    s.onload = () => {\n      window.Snap4KnackLoader.initReact({\n        pluginId: '${plugin.id}',\n        tenantId: '${tenantId}',\n        userId: user.uid,\n        userEmail: user.email ?? '',\n        primaryColor: '${plugin.customBranding?.primaryColor ?? '#3b82f6'}',\n        position: '${plugin.customBranding?.position ?? 'bottom-right'}',\n      });\n    };\n    document.head.appendChild(s);\n  });\n}, []);`;
+                    navigator.clipboard.writeText(code).then(() => {
+                      setCopiedReact(true);
+                      setTimeout(() => setCopiedReact(false), 2000);
+                    });
+                  }}
+                  className="absolute top-3 right-3 bg-gray-700 hover:bg-gray-600 text-white text-xs px-3 py-1.5 rounded-md flex items-center gap-1.5"
+                >
+                  {copiedReact ? <CheckIcon className="h-3 w-3" /> : <ClipboardDocumentIcon className="h-3 w-3" />}
+                  {copiedReact ? 'Copied!' : 'Copy'}
+                </button>
+              </div>
+              <div className="mt-4 bg-blue-50 rounded-lg px-4 py-3 text-sm text-blue-700">
+                <p className="font-medium">How it works:</p>
+                <ul className="mt-1 list-disc list-inside space-y-1 text-blue-600 text-xs">
+                  <li>The widget authenticates using the Firebase Auth user's UID</li>
+                  <li>All logged-in users see the ● Snap button — no role filtering applies</li>
+                  <li>Snaps appear in your feed tagged with source: React</li>
+                </ul>
+              </div>
+            </>
+          )}
         </div>
       )}
 

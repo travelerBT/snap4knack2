@@ -55,6 +55,8 @@
     categories: ['Bug', 'Feature Request', 'Question', 'Other'],
     hipaaEnabled: false,
     allowRecording: false,
+    appSource: null,  // 'knack' | 'react'
+    reactUser: null,  // { userId, userEmail }
   };
 
   // ── Console capture (all levels) ──────────────────────────────────────────
@@ -144,14 +146,17 @@
 
   // ── Auth: request widget token from Cloud Function ─────────────────────────
 
-  function getWidgetToken(pluginId, tenantId, knackUserId, knackUserRole) {
+  function getWidgetToken(pluginId, tenantId, userId, userRole) {
     // onRequest — send data directly, response is { token: "..." }
-    return req('POST', FUNCTIONS_BASE + '/issueWidgetToken', {
-      pluginId: pluginId,
-      tenantId: tenantId,
-      knackUserId: knackUserId,
-      knackUserRole: knackUserRole,
-    }).then(function (resp) {
+    var body = { pluginId: pluginId, tenantId: tenantId };
+    if (state.appSource === 'react') {
+      body.userId = userId;
+      body.userRole = userRole || 'authenticated';
+    } else {
+      body.knackUserId = userId;
+      body.knackUserRole = userRole;
+    }
+    return req('POST', FUNCTIONS_BASE + '/issueWidgetToken', body).then(function (resp) {
       // Exchange custom token for Firebase ID token
       return exchangeCustomToken(resp.token);
     });
@@ -202,11 +207,15 @@
     if (state.idToken && tokenAge < EXPIRY_MS) {
       return Promise.resolve(state.idToken);
     }
-    if (!state.knackUser || !state.config) {
+    var activeUser = state.appSource === 'react' ? state.reactUser : state.knackUser;
+    if (!activeUser || !state.config) {
       return Promise.reject(new Error('Not authenticated'));
     }
-    var userId = state.knackUser.id || state.knackUser.email || 'anonymous';
-    return getWidgetToken(state.config.pluginId, state.config.tenantId, userId, state.knackRole)
+    var userId = state.appSource === 'react'
+      ? (activeUser.userId || activeUser.userEmail || 'anonymous')
+      : (activeUser.id || activeUser.email || 'anonymous');
+    var userRole = state.appSource === 'react' ? 'authenticated' : state.knackRole;
+    return getWidgetToken(state.config.pluginId, state.config.tenantId, userId, userRole)
       .then(function (idToken) {
         state.idToken = idToken;
         state.idTokenAcquiredAt = Date.now();
@@ -1138,9 +1147,11 @@
       viewportHeight: window.innerHeight,
       scrollX: window.scrollX,
       scrollY: window.scrollY,
-      knackUserId: state.knackUser && (state.knackUser.id || state.knackUser.email),
-      knackUserName: state.knackUser && state.knackUser.name,
-      knackRole: state.knackRole,
+      knackUserId: state.appSource !== 'react' ? (state.knackUser && (state.knackUser.id || state.knackUser.email)) : null,
+      knackUserName: state.appSource !== 'react' ? (state.knackUser && state.knackUser.name) : null,
+      knackRole: state.appSource !== 'react' ? state.knackRole : null,
+      userId: state.appSource === 'react' ? (state.reactUser && state.reactUser.userId) : null,
+      userEmail: state.appSource === 'react' ? (state.reactUser && state.reactUser.userEmail) : null,
     };
     var payload = {
       type: state.captureType || MODES.FULL,
@@ -1353,8 +1364,40 @@
       });
   }
 
+  function authenticateReact(reactUser) {
+    state.reactUser = reactUser;
+    var userId = reactUser.userId || reactUser.userEmail || 'anonymous';
+    getWidgetToken(state.config.pluginId, state.config.tenantId, userId, 'authenticated')
+      .then(function (idToken) {
+        state.idToken = idToken;
+        state.idTokenAcquiredAt = Date.now();
+        return fetchPluginBranding(state.config.pluginId, state.config.tenantId, idToken);
+      })
+      .then(function () {
+        injectFAB();
+      })
+      .catch(function (e) {
+        console.warn('[Snap4Knack] React auth error:', e.message);
+      });
+  }
+
+  // ── Mount: React/Firebase apps ─────────────────────────────────────────────
+
+  function mountReact(config) {
+    if (!config || !config.pluginId || !config.tenantId || !config.userId) {
+      console.warn('[Snap4Knack] mountReact() requires pluginId, tenantId, and userId');
+      return;
+    }
+    state.config = config;
+    state.appSource = 'react';
+    state.primaryColor = config.primaryColor || '#3b82f6';
+    state.position = config.position || 'bottom-right';
+    state.categories = config.categories || ['Bug', 'Feature Request', 'Question', 'Other'];
+    authenticateReact({ userId: config.userId, userEmail: config.userEmail || '' });
+  }
+
   // ── Export ─────────────────────────────────────────────────────────────────
 
-  global.Snap4Knack = { mount: mount };
+  global.Snap4Knack = { mount: mount, mountReact: mountReact };
 
 }(window));

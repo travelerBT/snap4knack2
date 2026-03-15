@@ -132,6 +132,8 @@ export interface SubmissionContext {
   knackUserName?: string;
   knackRole?: string;       // Knack object key e.g. 'object_1'
   knackUserRole?: string;   // alias
+  userId?: string;          // Firebase UID (React/Firebase apps)
+  userEmail?: string;       // user email (React/Firebase apps)
   viewportWidth?: number;
   viewportHeight?: number;
   scrollX?: number;
@@ -182,6 +184,7 @@ export interface SnapSubmission {
   priority?: 'low' | 'medium' | 'high' | 'critical';
   hipaaEnabled?: boolean;
   retentionDays?: number;
+  source?: 'knack' | 'react'; // app origin
   snapNumber?: number;
   sortOrder?: number;
   createdAt: Timestamp;

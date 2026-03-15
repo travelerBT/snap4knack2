@@ -56,5 +56,28 @@
     });
   }
 
-  global.Snap4KnackLoader = { init: init };
+  function initReact(config) {
+    if (!config || !config.pluginId || !config.tenantId || !config.userId) {
+      console.warn('[Snap4Knack] initReact() requires pluginId, tenantId, and userId');
+      return;
+    }
+    _config = config;
+    _config.baseUrl = BASE_URL;
+
+    if (_loaded && global.Snap4Knack) {
+      global.Snap4Knack.mountReact(_config);
+      return;
+    }
+
+    loadScript(WIDGET_BUNDLE, function () {
+      _loaded = true;
+      if (global.Snap4Knack) {
+        global.Snap4Knack.mountReact(_config);
+      } else {
+        console.error('[Snap4Knack] Widget bundle loaded but Snap4Knack not found on window.');
+      }
+    });
+  }
+
+  global.Snap4KnackLoader = { init: init, initReact: initReact };
 }(window));

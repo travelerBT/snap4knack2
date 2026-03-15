@@ -553,10 +553,18 @@ export const issueWidgetToken = functions.https.onRequest(
     if (req.method === "OPTIONS") { res.status(204).send(""); return; }
     if (req.method !== "POST") { res.status(405).json({ error: "Method not allowed" }); return; }
 
-    const { pluginId, tenantId, knackUserId, knackUserRole } = req.body as {
-      pluginId: string; tenantId: string; knackUserId: string; knackUserRole: string;
+    const { pluginId, tenantId, knackUserId, knackUserRole, userId, userRole } = req.body as {
+      pluginId: string; tenantId: string;
+      // Knack path
+      knackUserId?: string; knackUserRole?: string;
+      // React/Firebase path
+      userId?: string; userRole?: string;
     };
-    if (!pluginId || !tenantId || !knackUserId) {
+
+    // Either knackUserId (Knack) or userId (React) must be present
+    const isReact = !!userId;
+    const effectiveUserId = isReact ? userId! : knackUserId;
+    if (!pluginId || !tenantId || !effectiveUserId) {
       res.status(400).json({ error: "Missing required widget params." }); return;
     }
 
@@ -566,21 +574,27 @@ export const issueWidgetToken = functions.https.onRequest(
       res.status(404).json({ error: "Plugin not found or inactive." }); return;
     }
 
-    // Check role is in selectedRoles. Empty array or '*' means allow all authenticated users.
-    const selectedRoles: string[] = pluginDoc.data()?.selectedRoles || [];
-    const allowAll = selectedRoles.length === 0 || selectedRoles.includes("*");
-    if (!allowAll && !selectedRoles.includes(knackUserRole)) {
-      res.status(403).json({ error: "User role not authorized for this plugin." }); return;
+    // Role check only applies to Knack apps — React/Firebase apps skip it entirely
+    if (!isReact) {
+      const selectedRoles: string[] = pluginDoc.data()?.selectedRoles || [];
+      const allowAll = selectedRoles.length === 0 || selectedRoles.includes("*");
+      if (!allowAll && !selectedRoles.includes(knackUserRole as string)) {
+        res.status(403).json({ error: "User role not authorized for this plugin." }); return;
+      }
     }
 
-    // Issue custom token tied to Knack user
-    const widgetUid = `widget-${tenantId}-${knackUserId}`;
+    // Issue custom token — encode source so submitSnap can store it on the doc
+    const source = isReact ? "react" : "knack";
+    const widgetUid = `widget-${tenantId}-${effectiveUserId}`;
     const token = await auth.createCustomToken(widgetUid, {
       role: "widget",
       snap_tenantId: tenantId,
       snap_pluginId: pluginId,
-      knackUserId,
-      knackUserRole,
+      snap_source: source,
+      knackUserId: isReact ? null : knackUserId,
+      knackUserRole: isReact ? null : knackUserRole,
+      userId: isReact ? userId : null,
+      userRole: isReact ? (userRole || "authenticated") : null,
     });
 
     res.json({ token });
@@ -615,6 +629,7 @@ export const submitSnap = functions.https.onRequest(
     const pluginId = (claims.snap_pluginId || claims.pluginId) as string | undefined;
     const knackUserId = claims.knackUserId as string | undefined;
     const knackUserRole = claims.knackUserRole as string | undefined;
+    const source = (claims.snap_source as string | undefined) || "knack"; // 'knack' | 'react'
     if (!tenantId || !pluginId) { res.status(400).json({ error: "Token missing claims" }); return; }
 
     const body = req.body as Record<string, unknown>;
@@ -686,6 +701,7 @@ export const submitSnap = functions.https.onRequest(
       status: "new",
       hipaaEnabled,
       retentionDays,
+      source, // 'knack' | 'react'
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     };
 
