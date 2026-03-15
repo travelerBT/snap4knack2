@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { collection, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../firebase';
+import { httpsCallable } from 'firebase/functions';
+import { db, functions } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import SEO from '../components/SEO';
 import {
@@ -9,6 +10,8 @@ import {
   PlusIcon,
   ChevronRightIcon,
   CheckCircleIcon,
+  TrashIcon,
+  ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline';
 import type { Connection, SnapPlugin, KnackRole } from '../types';
 import { DEFAULT_SNAP_SETTINGS, DEFAULT_BRANDING, DEFAULT_CATEGORIES } from '../config/constants';
@@ -55,6 +58,8 @@ export default function SnapPlugins() {
   const [categories, setCategories] = useState<string[]>([...DEFAULT_CATEGORIES]);
   const [notifyEmails, setNotifyEmails] = useState('');
   const [saving, setSaving] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; pluginId: string; pluginName: string }>({ open: false, pluginId: '', pluginName: '' });
+  const [deleting, setDeleting] = useState(false);
 
   const selectedConnection = connections.find((c) => c.id === selectedConnectionId);
 
@@ -120,6 +125,21 @@ export default function SnapPlugins() {
     }
   };
 
+  const handleDelete = async () => {
+    if (!deleteConfirm.pluginId) return;
+    setDeleting(true);
+    try {
+      const fn = httpsCallable<{ pluginId: string; tenantId: string }, { success: boolean; deletedSnaps: number }>(
+        functions, 'deleteSnapPlugin'
+      );
+      await fn({ pluginId: deleteConfirm.pluginId, tenantId });
+      setPlugins((prev) => prev.filter((p) => p.id !== deleteConfirm.pluginId));
+    } finally {
+      setDeleting(false);
+      setDeleteConfirm({ open: false, pluginId: '', pluginName: '' });
+    }
+  };
+
   return (
     <div>
       <SEO title="Snap Plugins" path="/snap-plugins" />
@@ -161,31 +181,75 @@ export default function SnapPlugins() {
               const conn = connections.find((c) => c.id === plugin.connectionId);
               const isReact = plugin.appType === 'react';
               return (
-                <Link key={plugin.id} to={`/snap-plugins/${plugin.id}`} className="flex items-center gap-4 px-6 py-4 hover:bg-gray-50 transition-colors">
-                  <div className="bg-blue-50 rounded-lg p-2.5">
-                    <CameraIcon className="h-5 w-5 text-blue-600" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900">{plugin.name}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      {isReact
-                        ? 'React / Firebase App'
-                        : `${conn?.name || 'Unknown connection'} · ${plugin.selectedRoles.length} role${plugin.selectedRoles.length !== 1 ? 's' : ''}`
-                      }
-                    </p>
-                  </div>
-                  {isReact && (
-                    <span className="inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">React</span>
-                  )}
-                  <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                    plugin.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'
-                  }`}>
-                    {plugin.status}
-                  </span>
-                  <ChevronRightIcon className="h-5 w-5 text-gray-400" />
-                </Link>
+                <div key={plugin.id} className="flex items-center group hover:bg-gray-50 transition-colors">
+                  <Link to={`/snap-plugins/${plugin.id}`} className="flex items-center gap-4 px-6 py-4 flex-1 min-w-0">
+                    <div className="bg-blue-50 rounded-lg p-2.5">
+                      <CameraIcon className="h-5 w-5 text-blue-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900">{plugin.name}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {isReact
+                          ? 'React / Firebase App'
+                          : `${conn?.name || 'Unknown connection'} · ${plugin.selectedRoles.length} role${plugin.selectedRoles.length !== 1 ? 's' : ''}`
+                        }
+                      </p>
+                    </div>
+                    {isReact && (
+                      <span className="inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">React</span>
+                    )}
+                    <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                      plugin.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'
+                    }`}>
+                      {plugin.status}
+                    </span>
+                    <ChevronRightIcon className="h-5 w-5 text-gray-400" />
+                  </Link>
+                  <button
+                    onClick={() => setDeleteConfirm({ open: true, pluginId: plugin.id, pluginName: plugin.name })}
+                    className="mr-4 p-2 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all rounded-lg hover:bg-red-50"
+                    title="Delete plugin"
+                  >
+                    <TrashIcon className="h-4 w-4" />
+                  </button>
+                </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirm Modal */}
+      {deleteConfirm.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+            <div className="flex items-start gap-4">
+              <div className="flex-shrink-0 bg-red-100 rounded-full p-2">
+                <ExclamationTriangleIcon className="h-6 w-6 text-red-600" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-gray-900">Delete "{deleteConfirm.pluginName}"?</h3>
+                <p className="mt-1 text-sm text-gray-500">
+                  This will permanently delete the plugin and <strong>all snaps in its feed</strong>. This action cannot be undone.
+                </p>
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                onClick={() => setDeleteConfirm({ open: false, pluginId: '', pluginName: '' })}
+                disabled={deleting}
+                className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg disabled:opacity-50"
+              >
+                {deleting ? 'Deleting…' : 'Delete Plugin'}
+              </button>
+            </div>
           </div>
         </div>
       )}

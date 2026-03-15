@@ -1459,6 +1459,81 @@ export const purgeExpiredSnaps = onSchedule(
   }
 );
 
+// ── deleteSnapPlugin ─────────────────────────────────────────────────────────
+// Deletes a snap plugin and ALL associated snap_submissions (+ their comment
+// subcollections and Storage screenshots). Runs in paginated batches of 400
+// so it never exceeds the Firestore 500-operation batch limit.
+
+export const deleteSnapPlugin = functions.https.onCall(
+  { enforceAppCheck: false },
+  async (request) => {
+    if (!request.auth) throw new functions.https.HttpsError("unauthenticated", "Must be signed in.");
+    const { pluginId, tenantId } = request.data as { pluginId: string; tenantId: string };
+
+    if (!pluginId || !tenantId) {
+      throw new functions.https.HttpsError("invalid-argument", "pluginId and tenantId are required.");
+    }
+    if (request.auth.uid !== tenantId) {
+      throw new functions.https.HttpsError("permission-denied", "Not authorized.");
+    }
+
+    // Verify plugin belongs to this tenant
+    const pluginRef = db.collection("tenants").doc(tenantId).collection("snapPlugins").doc(pluginId);
+    const pluginDoc = await pluginRef.get();
+    if (!pluginDoc.exists) throw new functions.https.HttpsError("not-found", "Plugin not found.");
+    if (pluginDoc.data()?.tenantId !== tenantId) {
+      throw new functions.https.HttpsError("permission-denied", "Not authorized.");
+    }
+
+    const bucket = admin.storage().bucket(STORAGE_BUCKET);
+    let deletedSnaps = 0;
+
+    // Paginated delete of snap_submissions for this plugin
+    let lastDoc: admin.firestore.QueryDocumentSnapshot | null = null;
+    while (true) {
+      let q = db.collection("snap_submissions")
+        .where("tenantId", "==", tenantId)
+        .where("pluginId", "==", pluginId)
+        .limit(400);
+      if (lastDoc) q = q.startAfter(lastDoc);
+
+      const snap = await q.get();
+      if (snap.empty) break;
+
+      const batch = db.batch();
+      for (const snapDoc of snap.docs) {
+        const snapId = snapDoc.id;
+
+        // Delete comment subcollection
+        const commentsSnap = await db.collection("snap_submissions").doc(snapId).collection("comments").get();
+        for (const commentDoc of commentsSnap.docs) {
+          batch.delete(commentDoc.ref);
+        }
+
+        // Delete screenshot from Storage (best-effort — don't fail if missing)
+        try {
+          await bucket.file(`snap_screenshots/${tenantId}/${snapId}.png`).delete();
+        } catch {
+          // file may not exist (e.g. text-only snap)
+        }
+
+        batch.delete(snapDoc.ref);
+        deletedSnaps++;
+      }
+      await batch.commit();
+
+      if (snap.size < 400) break;
+      lastDoc = snap.docs[snap.docs.length - 1];
+    }
+
+    // Finally delete the plugin document itself
+    await pluginRef.delete();
+
+    console.log(`[deleteSnapPlugin] Deleted plugin ${pluginId} and ${deletedSnaps} snap(s) for tenant ${tenantId}`);
+    return { success: true, deletedSnaps };
+  }
+);
+
 // ── onAuditLogCreated ────────────────────────────────────────────────────────────
 // Immutable audit archive — mirrors every audit_log Firestore document to Cloud Storage
 // as a write-once JSON file at audit_archive/{YYYY}/{MM}/{DD}/{logId}.json.

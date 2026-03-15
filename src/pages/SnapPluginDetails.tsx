@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { doc, getDoc, updateDoc, collection, getDocs, query, where, serverTimestamp } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../firebase';
@@ -15,6 +15,7 @@ import {
   UsersIcon,
   TrashIcon,
   ExclamationCircleIcon,
+  ExclamationTriangleIcon,
   LinkIcon,
   ShieldCheckIcon,
   BoltIcon,
@@ -28,6 +29,7 @@ type Tab = typeof TABS[number];
 export default function SnapPluginDetails() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
+  const navigate = useNavigate();
   const tenantId = user?.uid || '';
 
   const [plugin, setPlugin] = useState<SnapPlugin | null>(null);
@@ -54,6 +56,8 @@ export default function SnapPluginDetails() {
 
   const [hipaaSaving, setHipaaSaving] = useState(false);
   const [hipaaConfirm, setHipaaConfirm] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   // Sharing state
   const [tenantShares, setTenantShares] = useState<TenantShare[]>([]);
@@ -315,6 +319,24 @@ export default function SnapPluginDetails() {
     }
   };
 
+  const handleDeletePlugin = async () => {
+    if (!id) return;
+    setDeleting(true);
+    try {
+      const fn = httpsCallable<{ pluginId: string; tenantId: string }, { success: boolean; deletedSnaps: number }>(
+        functions, 'deleteSnapPlugin'
+      );
+      await fn({ pluginId: id, tenantId });
+      navigate('/snap-plugins');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to delete plugin.';
+      setModal({ open: true, type: 'error', title: 'Delete failed', message: msg });
+    } finally {
+      setDeleting(false);
+      setDeleteConfirm(false);
+    }
+  };
+
   if (loading) {
     return <div className="space-y-4">{[...Array(4)].map((_, i) => <div key={i} className="h-16 bg-gray-200 rounded-lg animate-pulse" />)}</div>;
   }
@@ -440,6 +462,19 @@ export default function SnapPluginDetails() {
                 DLP PHI scanning enabled · {plugin.retentionDays ?? 2555}-day retention · Screen recording disabled
               </p>
             )}
+          </div>
+
+          {/* Danger Zone */}
+          <div className="border border-red-200 rounded-lg p-4 mt-2">
+            <h4 className="text-sm font-semibold text-red-700 mb-1">Danger Zone</h4>
+            <p className="text-xs text-gray-500 mb-3">Permanently deletes this plugin and all snaps in its feed. This cannot be undone.</p>
+            <button
+              onClick={() => setDeleteConfirm(true)}
+              className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-red-600 border border-red-300 rounded-lg hover:bg-red-50"
+            >
+              <TrashIcon className="h-4 w-4" />
+              Delete Plugin
+            </button>
           </div>
         </div>
       )}
@@ -702,6 +737,41 @@ useEffect(() => {
         </div>
       )}
       <Modal open={modal.open} type={modal.type} title={modal.title} message={modal.message} onClose={() => setModal((m) => ({ ...m, open: false }))} />
+      {/* Delete plugin confirm */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+            <div className="flex items-start gap-4">
+              <div className="flex-shrink-0 bg-red-100 rounded-full p-2">
+                <ExclamationTriangleIcon className="h-6 w-6 text-red-600" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-gray-900">Delete "{plugin?.name}"?</h3>
+                <p className="mt-1 text-sm text-gray-500">
+                  This will permanently delete this plugin and <strong>all snaps in its feed</strong>. This cannot be undone.
+                </p>
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                onClick={() => setDeleteConfirm(false)}
+                disabled={deleting}
+                className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeletePlugin}
+                disabled={deleting}
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg disabled:opacity-50"
+              >
+                {deleting ? 'Deleting…' : 'Delete Plugin'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <Modal
         open={hipaaConfirm}
         type="warning"
