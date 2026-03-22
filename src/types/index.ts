@@ -79,6 +79,7 @@ export interface SnapSettings {
   formFields: FormField[];
   categories: string[];
   notifyEmails: string[];
+  notificationsEnabled?: boolean;
   hipaaEnabled?: boolean;
   retentionDays?: number;
   slackEnabled?: boolean;
@@ -131,7 +132,9 @@ export interface SubmissionContext {
   userAgent?: string;
   knackUserId?: string;
   knackUserName?: string;
-  knackRole?: string;       // Knack object key e.g. 'object_1'
+  knackUserEmail?: string;    // always the Knack user email (separate from knackUserId)
+  knackRole?: string;       // Knack object key e.g. 'profile_19'
+  knackRoleName?: string;   // Human-readable role name e.g. 'Staff'
   knackUserRole?: string;   // alias
   userId?: string;          // Firebase UID (React/Firebase apps)
   userEmail?: string;       // user email (React/Firebase apps)
@@ -188,6 +191,8 @@ export interface SnapSubmission {
   source?: 'knack' | 'react'; // app origin
   snapNumber?: number;
   sortOrder?: number;
+  submitterEmail?: string;    // top-level email for notifications; extracted at submission time
+  notifySubmitter?: boolean; // send status-change emails to the submitter
   createdAt: Timestamp;
   resolvedAt?: Timestamp;
 }
@@ -206,6 +211,7 @@ export interface SnapComment {
   notify?: boolean;      // when true, fan-out email to all commenters
   dlpPending?: boolean;  // true while Cloud Function DLP processing is in-flight
   dlpFlagged?: boolean;  // true if DLP redacted any PHI
+  imageUrls?: string[];  // optional image attachments
 }
 
 export interface StatusHistoryEntry {

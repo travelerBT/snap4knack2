@@ -8,7 +8,7 @@ import { DlpServiceClient, protos as dlpProtos } from "@google-cloud/dlp";
 import sgMail from "@sendgrid/mail";
 import axios from "axios";
 import { randomUUID } from "crypto";
-import { snapNotificationEmail, criticalSnapEmail, clientInvitationEmail, commentNotificationEmail, newTenantWelcomeEmail } from "./emailTemplates";
+import { snapNotificationEmail, criticalSnapEmail, clientInvitationEmail, commentNotificationEmail, submitterStatusUpdateEmail, newTenantWelcomeEmail } from "./emailTemplates";
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -702,6 +702,14 @@ export const submitSnap = functions.https.onRequest(
       hipaaEnabled,
       retentionDays,
       source, // 'knack' | 'react'
+      notifySubmitter: body.notifySubmitter !== false, // submitter's preference; default true
+      submitterEmail: (() => {
+        const ctx = (body.context as Record<string, unknown>) || {};
+        const email = (ctx.userEmail as string) ||
+          (ctx.knackUserEmail as string) ||
+          (typeof ctx.knackUserId === "string" && ctx.knackUserId.includes("@") ? ctx.knackUserId : "");
+        return email || null;
+      })(),
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     };
 
@@ -746,14 +754,13 @@ export const onSnapCreated = functions.firestore.onDocumentCreated(
     const tenantId = snap.tenantId as string;
     const pluginId = snap.pluginId as string;
 
-    const [pluginDoc, tenantDoc] = await Promise.all([
+    const [pluginDoc] = await Promise.all([
       db.collection("tenants").doc(tenantId).collection("snapPlugins").doc(pluginId).get(),
       db.collection("tenants").doc(tenantId).get(),
     ]);
 
     const pluginData = pluginDoc.data();
     const notifyEmails = (pluginData?.snapSettings?.notifyEmails as string[]) || [];
-    const tenantData = tenantDoc.data();
     const priority = snap.priority as string | undefined;
     const isCritical = priority === "critical";
     const hipaaMode = pluginData?.hipaaEnabled === true;
@@ -766,7 +773,8 @@ export const onSnapCreated = functions.firestore.onDocumentCreated(
     const pluginName = he(pluginData?.name || "Plugin");
 
     // ── Email notifications ───────────────────────────────────────────────────
-    if ((isCritical || tenantData?.notifyOnSnap) && notifyEmails.length > 0) {
+    const notificationsEnabled = pluginData?.snapSettings?.notificationsEnabled !== false;
+    if (notifyEmails.length > 0 && notificationsEnabled) {
       const key = await getSendGridKey();
       if (key) {
         sgMail.setApiKey(key);
@@ -1017,7 +1025,61 @@ export const onCommentCreated = functions.firestore.onDocumentCreated(
   }
 );
 
-// ── shareFeedWithTenant ──────────────────────────────────────────────────────
+// ── Firestore trigger: notify submitter on status change ─────────────────────
+
+export const onSnapHistoryCreated = functions.firestore.onDocumentCreated(
+  "snap_submissions/{submissionId}/history/{historyId}",
+  async (event) => {
+    const entry = event.data?.data() as Record<string, unknown> | undefined;
+    if (!entry || entry.changeType !== "status") return;
+
+    const submissionId = event.params.submissionId;
+    const submissionDoc = await db.collection("snap_submissions").doc(submissionId).get();
+    if (!submissionDoc.exists) return;
+    const submission = submissionDoc.data()!;
+
+    // Respect the per-snap toggle (default: true when email is present)
+    if (submission.notifySubmitter === false) return;
+
+    // Never email submitters on HIPAA snaps
+    if (submission.hipaaEnabled === true) return;
+
+    // Resolve submitter email: React apps store userEmail; Knack apps may store email as knackUserId
+    const ctx = (submission.context as Record<string, unknown>) || {};
+    const rawEmail = (submission.submitterEmail as string) ||
+      (ctx.userEmail as string) ||
+      (ctx.knackUserEmail as string) ||
+      (typeof ctx.knackUserId === "string" && ctx.knackUserId.includes("@") ? ctx.knackUserId : "");
+    if (!rawEmail) return;
+
+    const tenantId = submission.tenantId as string;
+    const pluginId = submission.pluginId as string;
+    const snapNumber = submission.snapNumber as number | undefined;
+    const category = ((submission.formData as Record<string, unknown>)?.category as string) || "Snap";
+    const pageUrl = (ctx.pageUrl as string) || "";
+
+    const pluginDoc = await db.collection("tenants").doc(tenantId).collection("snapPlugins").doc(pluginId).get();
+    const pluginName = he(pluginDoc.data()?.name || "Plugin");
+
+    const key = await getSendGridKey();
+    if (!key) return;
+    sgMail.setApiKey(key);
+
+    await sgMail.send({
+      from: SENDGRID_FROM,
+      ...submitterStatusUpdateEmail({
+        recipientEmail: rawEmail,
+        pluginName,
+        snapNumber,
+        category: he(category),
+        newStatus: (entry.toValue as string) || "unknown",
+        pageUrl: he(pageUrl),
+      }),
+    });
+  }
+);
+
+// ── shareFeedWithTenant ────────────────────────────────────────────────────────
 
 export const shareFeedWithTenant = functions.https.onCall(
   { enforceAppCheck: false },

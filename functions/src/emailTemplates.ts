@@ -165,6 +165,59 @@ export function newTenantWelcomeEmail(opts: {
   };
 }
 
+export function submitterStatusUpdateEmail(opts: {
+  recipientEmail: string;
+  pluginName: string;
+  snapNumber?: number;
+  category: string;
+  newStatus: string;
+  pageUrl?: string;
+}): { to: string; subject: string; html: string } {
+  const pluginName = escapeHtml(opts.pluginName);
+  const category = escapeHtml(opts.category);
+  const snapLabel = opts.snapNumber != null ? `#${opts.snapNumber} — ${category}` : category;
+  const statusBadgeColor: Record<string, string> = {
+    new: '#6b7280',
+    in_progress: '#2563eb',
+    ready_for_testing: '#7c3aed',
+    resolved: '#16a34a',
+    archived: '#9ca3af',
+  };
+  const statusLabel: Record<string, string> = {
+    new: 'New',
+    in_progress: 'In Progress',
+    ready_for_testing: 'Ready for Testing',
+    resolved: 'Resolved',
+    archived: 'Archived',
+  };
+  const color = statusBadgeColor[opts.newStatus] || '#374151';
+  const label = statusLabel[opts.newStatus] || opts.newStatus;
+  const pageSection = opts.pageUrl
+    ? `<p style="margin:16px 0 0"><a href="${escapeHtml(opts.pageUrl)}" style="color:#2563eb">Return to ${escapeHtml(opts.pluginName)} →</a></p>`
+    : '';
+  return {
+    to: opts.recipientEmail,
+    subject: `[${pluginName}] Your submission ${snapLabel} has been updated`,
+    html: `
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
+        <div style="background:#2563eb;padding:16px 24px;border-radius:8px 8px 0 0">
+          <h1 style="color:#fff;margin:0;font-size:20px">🔄 Submission Status Updated</h1>
+        </div>
+        <div style="background:#f9fafb;padding:24px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px">
+          <p style="margin:0 0 12px;color:#374151">Your submission <strong>${snapLabel}</strong> on <strong>${pluginName}</strong> has a new status:</p>
+          <p style="margin:0 0 20px">
+            <span style="display:inline-block;padding:6px 16px;border-radius:20px;font-weight:700;font-size:14px;color:#fff;background:${color}">${label}</span>
+          </p>
+          ${pageSection}
+        </div>
+        <p style="margin-top:16px;font-size:12px;color:#9ca3af;text-align:center">
+          You received this because notifications are enabled for your submission.
+        </p>
+      </div>
+    `,
+  };
+}
+
 export function commentNotificationEmail(opts: {
   recipientEmail: string;
   authorName: string;

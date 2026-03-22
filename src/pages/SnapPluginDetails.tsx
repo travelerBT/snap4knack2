@@ -56,6 +56,7 @@ export default function SnapPluginDetails() {
 
   const [hipaaSaving, setHipaaSaving] = useState(false);
   const [hipaaConfirm, setHipaaConfirm] = useState(false);
+  const [notifSaving, setNotifSaving] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -168,6 +169,18 @@ export default function SnapPluginDetails() {
         ? 'All new snaps will be DLP-scanned. Retention set to 7 years (2,555 days). Existing snaps are not retroactively scanned.'
         : 'HIPAA mode disabled. Retention reset to 365 days.',
     });
+  };
+
+  const saveNotificationsEnabled = async (enable: boolean) => {
+    if (!id || !plugin) return;
+    setNotifSaving(true);
+    await updateDoc(doc(db, 'tenants', tenantId, 'snapPlugins', id), {
+      'snapSettings.notificationsEnabled': enable,
+    });
+    setPlugin((p) =>
+      p ? { ...p, snapSettings: { ...p.snapSettings, notificationsEnabled: enable } } : p
+    );
+    setNotifSaving(false);
   };
 
   const saveSlackIntegration = async () => {
@@ -425,13 +438,46 @@ export default function SnapPluginDetails() {
                 ))}
               </dd>
             </div>
-            <div>
+            <div className="sm:col-span-2">
               <dt className="text-xs font-medium text-gray-500">Notification Emails</dt>
               <dd className="mt-1 text-sm text-gray-900">
                 {plugin.snapSettings.notifyEmails.length > 0 ? plugin.snapSettings.notifyEmails.join(', ') : '—'}
               </dd>
             </div>
           </dl>
+          {/* Notifications toggle */}
+          {plugin.snapSettings.notifyEmails.length > 0 && (
+            <div className="border border-gray-200 rounded-lg p-4">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <BoltIcon className={`h-5 w-5 flex-shrink-0 ${plugin.snapSettings.notificationsEnabled !== false ? 'text-blue-500' : 'text-gray-400'}`} />
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">Email Notifications</p>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      {plugin.snapSettings.notificationsEnabled !== false
+                        ? `Sending to: ${plugin.snapSettings.notifyEmails.join(', ')}`
+                        : 'Notifications are paused for this plugin'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => saveNotificationsEnabled(plugin.snapSettings.notificationsEnabled === false)}
+                  disabled={notifSaving}
+                  className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 ${
+                    plugin.snapSettings.notificationsEnabled !== false ? 'bg-blue-600' : 'bg-gray-200'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                      plugin.snapSettings.notificationsEnabled !== false ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* HIPAA toggle */}
           <div className="border border-gray-200 rounded-lg p-4 mt-2">
             <div className="flex items-center justify-between gap-4">
