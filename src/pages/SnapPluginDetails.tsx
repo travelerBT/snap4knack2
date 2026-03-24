@@ -604,29 +604,40 @@ s.onload=function(){Snap4KnackLoader.init({
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 
 useEffect(() => {
-  const auth = getAuth();
-  return onAuthStateChanged(auth, (user) => {
-    if (!user) return;
+  // Inject loader once — guarded against double-load
+  if (!document.querySelector('script[data-snap4knack-loader]')) {
     const s = document.createElement('script');
     s.src = '${WIDGET_BASE_URL}/widget/loader.js';
-    s.onload = () => {
-      window.Snap4KnackLoader.initReact({
-        pluginId: '${plugin.id}',
-        tenantId: '${tenantId}',
-        userId: user.uid,
-        userEmail: user.email ?? '',
-        primaryColor: '${plugin.customBranding?.primaryColor ?? '#3b82f6'}',
-        position: '${plugin.customBranding?.position ?? 'bottom-right'}',
-      });
-    };
+    s.setAttribute('data-snap4knack-loader', '1');
     document.head.appendChild(s);
+  }
+  const auth = getAuth();
+  const unsubscribe = onAuthStateChanged(auth, (user) => {
+    if (user) {
+      const tryInit = () => {
+        if (window.Snap4KnackLoader) {
+          window.Snap4KnackLoader.initReact({
+            pluginId: '${plugin.id}',
+            tenantId: '${tenantId}',
+            userId: user.uid,
+            userEmail: user.email ?? '',
+            primaryColor: '${plugin.customBranding?.primaryColor ?? '#3b82f6'}',
+            position: '${plugin.customBranding?.position ?? 'bottom-right'}',
+          });
+        } else { setTimeout(tryInit, 100); }
+      };
+      tryInit();
+    } else if (window.Snap4Knack) {
+      window.Snap4Knack.teardown();
+    }
   });
+  return unsubscribe;
 }, []);`}
                 </pre>
                 <button
                   onClick={() => {
                     if (!plugin) return;
-                    const code = `import { useEffect } from 'react';\nimport { getAuth, onAuthStateChanged } from 'firebase/auth';\n\nuseEffect(() => {\n  const auth = getAuth();\n  return onAuthStateChanged(auth, (user) => {\n    if (!user) return;\n    const s = document.createElement('script');\n    s.src = '${WIDGET_BASE_URL}/widget/loader.js';\n    s.onload = () => {\n      window.Snap4KnackLoader.initReact({\n        pluginId: '${plugin.id}',\n        tenantId: '${tenantId}',\n        userId: user.uid,\n        userEmail: user.email ?? '',\n        primaryColor: '${plugin.customBranding?.primaryColor ?? '#3b82f6'}',\n        position: '${plugin.customBranding?.position ?? 'bottom-right'}',\n      });\n    };\n    document.head.appendChild(s);\n  });\n}, []);`;
+                    const code = `import { useEffect } from 'react';\nimport { getAuth, onAuthStateChanged } from 'firebase/auth';\n\nuseEffect(() => {\n  if (!document.querySelector('script[data-snap4knack-loader]')) {\n    const s = document.createElement('script');\n    s.src = '${WIDGET_BASE_URL}/widget/loader.js';\n    s.setAttribute('data-snap4knack-loader', '1');\n    document.head.appendChild(s);\n  }\n  const auth = getAuth();\n  const unsubscribe = onAuthStateChanged(auth, (user) => {\n    if (user) {\n      const tryInit = () => {\n        if (window.Snap4KnackLoader) {\n          window.Snap4KnackLoader.initReact({\n            pluginId: '${plugin.id}',\n            tenantId: '${tenantId}',\n            userId: user.uid,\n            userEmail: user.email ?? '',\n            primaryColor: '${plugin.customBranding?.primaryColor ?? '#3b82f6'}',\n            position: '${plugin.customBranding?.position ?? 'bottom-right'}',\n          });\n        } else { setTimeout(tryInit, 100); }\n      };\n      tryInit();\n    } else if (window.Snap4Knack) {\n      window.Snap4Knack.teardown();\n    }\n  });\n  return unsubscribe;\n}, []);`;
                     navigator.clipboard.writeText(code).then(() => {
                       setCopiedReact(true);
                       setTimeout(() => setCopiedReact(false), 2000);

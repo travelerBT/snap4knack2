@@ -650,16 +650,24 @@ export default function SnapDetail() {
                   </dd>
                 </div>
               )}
-              {sub.context?.knackUserName && (
+              {(sub.context?.knackUserName || sub.context?.userEmail || sub.context?.userId) && (
                 <div>
                   <dt className="text-gray-400 text-xs">Submitted By</dt>
-                  <dd className="text-gray-700 font-medium">{sub.context.knackUserName}</dd>
+                  <dd className="text-gray-700 font-medium">
+                    {sub.context.knackUserName || sub.context.userEmail || sub.context.userId}
+                  </dd>
                 </div>
               )}
               {sub.context?.knackUserId && (
                 <div>
                   <dt className="text-gray-400 text-xs">Knack User ID</dt>
                   <dd className="font-mono text-xs text-gray-700">{sub.context.knackUserId}</dd>
+                </div>
+              )}
+              {sub.source === 'react' && (
+                <div>
+                  <dt className="text-gray-400 text-xs">App Source</dt>
+                  <dd><span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">React App</span></dd>
                 </div>
               )}
               {sub.context?.knackRole && (
@@ -690,7 +698,7 @@ export default function SnapDetail() {
                 <span className="mt-0.5 h-5 w-5 rounded-full bg-blue-50 flex items-center justify-center text-blue-400 flex-shrink-0">✦</span>
                 <div>
                   <span className="font-medium text-gray-700">
-                    {sub.context?.knackUserName ?? 'Widget user'}
+                    {sub.context?.knackUserName || sub.context?.userEmail || sub.context?.userId || 'Widget user'}
                   </span>
                   <span className="text-gray-500"> submitted snap</span>
                   {sub.snapNumber != null && (

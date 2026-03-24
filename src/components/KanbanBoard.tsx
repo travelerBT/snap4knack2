@@ -148,6 +148,9 @@ function SnapCard({
               HIPAA
             </span>
           )}
+          {sub.source === 'react' && (
+            <span className="inline-flex flex-shrink-0 px-1 py-0.5 rounded text-[9px] font-bold bg-indigo-50 text-indigo-600 border border-indigo-200">React</span>
+          )}
         </div>
         <span className="flex items-center gap-0.5 text-xs text-gray-400 flex-shrink-0">
           {CAPTURE_ICONS[sub.type]}
@@ -162,8 +165,8 @@ function SnapCard({
 
       <div className="flex items-center justify-between gap-1 flex-wrap">
         <div className="flex flex-col min-w-0">
-          {sub.context?.knackUserName && (
-            <span className="text-[10px] font-medium text-gray-600 truncate">{sub.context.knackUserName}</span>
+          {(sub.context?.knackUserName || sub.context?.userEmail) && (
+            <span className="text-[10px] font-medium text-gray-600 truncate">{sub.context.knackUserName || sub.context.userEmail}</span>
           )}
           {pluginName && (
             <span className="text-[10px] text-gray-400 truncate">{pluginName}</span>
@@ -207,7 +210,7 @@ function KanbanColumn({
   const styles = COLUMN_STYLES[statusValue] ?? COLUMN_STYLES['archived'];
 
   return (
-    <div className="flex flex-col min-w-[260px] w-full flex-1">
+    <div className="flex flex-col min-w-[260px] flex-1 h-full">
       <div className={`flex items-center justify-between px-3 py-2.5 rounded-t-xl ${styles.headerBg} border ${styles.border} border-b-0`}>
         <span className="text-sm font-semibold text-gray-700">{statusLabel}</span>
         <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${styles.count}`}>{orderedIds.length}</span>
@@ -215,7 +218,7 @@ function KanbanColumn({
 
       <div
         ref={setNodeRef}
-        className={`flex-1 min-h-[120px] rounded-b-xl border ${styles.border} ${styles.bg} p-2 transition-colors ${
+        className={`flex-1 min-h-0 overflow-y-auto rounded-b-xl border ${styles.border} ${styles.bg} p-2 transition-colors ${
           isOver ? 'ring-2 ring-inset ring-blue-400 bg-blue-50' : ''
         }`}
       >
@@ -369,7 +372,7 @@ export default function KanbanBoard({ submissions, linkPrefix, pluginMap, onStat
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
     >
-      <div className="flex gap-3 overflow-x-auto pb-4 items-start">
+      <div className="flex gap-3 overflow-x-auto pb-4 items-stretch h-[calc(100vh-290px)] min-h-[400px]">
         {STATUS_OPTIONS.map((s) => (
           <KanbanColumn
             key={s.value}

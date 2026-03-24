@@ -1505,10 +1505,38 @@
 
   // ── Mount: React/Firebase apps ─────────────────────────────────────────────
 
+  // ── Teardown ───────────────────────────────────────────────────────────────
+
+  function teardown() {
+    var fab = document.getElementById('s4k-fab');
+    if (fab && fab.parentNode) fab.parentNode.removeChild(fab);
+    var drawer = document.getElementById('s4k-drawer');
+    if (drawer && drawer.parentNode) drawer.parentNode.removeChild(drawer);
+    var backdrop = document.getElementById('s4k-modal-backdrop');
+    if (backdrop && backdrop.parentNode) backdrop.parentNode.removeChild(backdrop);
+    state.open = false;
+    state.expanded = false;
+    state.idToken = null;
+    state.idTokenAcquiredAt = 0;
+    state.appSource = null;
+    state.reactUser = null;
+    state.config = null;
+    state.step = 'mode';
+    state.mode = null;
+  }
+
   function mountReact(config) {
     if (!config || !config.pluginId || !config.tenantId || !config.userId) {
       console.warn('[Snap4Knack] mountReact() requires pluginId, tenantId, and userId');
       return;
+    }
+    // Same user already mounted — skip to avoid double FAB / double auth
+    if (state.appSource === 'react' && state.reactUser && state.reactUser.userId === config.userId) {
+      return;
+    }
+    // Different user — tear down existing session first
+    if (state.appSource === 'react' && state.reactUser) {
+      teardown();
     }
     state.config = config;
     state.appSource = 'react';
@@ -1520,6 +1548,6 @@
 
   // ── Export ─────────────────────────────────────────────────────────────────
 
-  global.Snap4Knack = { mount: mount, mountReact: mountReact };
+  global.Snap4Knack = { mount: mount, mountReact: mountReact, teardown: teardown };
 
 }(window));
