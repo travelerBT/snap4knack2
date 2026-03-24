@@ -8,7 +8,7 @@ import { DlpServiceClient, protos as dlpProtos } from "@google-cloud/dlp";
 import sgMail from "@sendgrid/mail";
 import axios from "axios";
 import { randomUUID } from "crypto";
-import { snapNotificationEmail, criticalSnapEmail, clientInvitationEmail, commentNotificationEmail, newTenantWelcomeEmail } from "./emailTemplates";
+import { snapNotificationEmail, criticalSnapEmail, clientInvitationEmail, commentNotificationEmail, submitterStatusUpdateEmail, newTenantWelcomeEmail, sharedFeedEmail } from "./emailTemplates";
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -553,10 +553,18 @@ export const issueWidgetToken = functions.https.onRequest(
     if (req.method === "OPTIONS") { res.status(204).send(""); return; }
     if (req.method !== "POST") { res.status(405).json({ error: "Method not allowed" }); return; }
 
-    const { pluginId, tenantId, knackUserId, knackUserRole } = req.body as {
-      pluginId: string; tenantId: string; knackUserId: string; knackUserRole: string;
+    const { pluginId, tenantId, knackUserId, knackUserRole, userId, userRole } = req.body as {
+      pluginId: string; tenantId: string;
+      // Knack path
+      knackUserId?: string; knackUserRole?: string;
+      // React/Firebase path
+      userId?: string; userRole?: string;
     };
-    if (!pluginId || !tenantId || !knackUserId) {
+
+    // Either knackUserId (Knack) or userId (React) must be present
+    const isReact = !!userId;
+    const effectiveUserId = isReact ? userId! : knackUserId;
+    if (!pluginId || !tenantId || !effectiveUserId) {
       res.status(400).json({ error: "Missing required widget params." }); return;
     }
 
@@ -566,21 +574,27 @@ export const issueWidgetToken = functions.https.onRequest(
       res.status(404).json({ error: "Plugin not found or inactive." }); return;
     }
 
-    // Check role is in selectedRoles. Empty array or '*' means allow all authenticated users.
-    const selectedRoles: string[] = pluginDoc.data()?.selectedRoles || [];
-    const allowAll = selectedRoles.length === 0 || selectedRoles.includes("*");
-    if (!allowAll && !selectedRoles.includes(knackUserRole)) {
-      res.status(403).json({ error: "User role not authorized for this plugin." }); return;
+    // Role check only applies to Knack apps — React/Firebase apps skip it entirely
+    if (!isReact) {
+      const selectedRoles: string[] = pluginDoc.data()?.selectedRoles || [];
+      const allowAll = selectedRoles.length === 0 || selectedRoles.includes("*");
+      if (!allowAll && !selectedRoles.includes(knackUserRole as string)) {
+        res.status(403).json({ error: "User role not authorized for this plugin." }); return;
+      }
     }
 
-    // Issue custom token tied to Knack user
-    const widgetUid = `widget-${tenantId}-${knackUserId}`;
+    // Issue custom token — encode source so submitSnap can store it on the doc
+    const source = isReact ? "react" : "knack";
+    const widgetUid = `widget-${tenantId}-${effectiveUserId}`;
     const token = await auth.createCustomToken(widgetUid, {
       role: "widget",
       snap_tenantId: tenantId,
       snap_pluginId: pluginId,
-      knackUserId,
-      knackUserRole,
+      snap_source: source,
+      knackUserId: isReact ? null : knackUserId,
+      knackUserRole: isReact ? null : knackUserRole,
+      userId: isReact ? userId : null,
+      userRole: isReact ? (userRole || "authenticated") : null,
     });
 
     res.json({ token });
@@ -615,6 +629,7 @@ export const submitSnap = functions.https.onRequest(
     const pluginId = (claims.snap_pluginId || claims.pluginId) as string | undefined;
     const knackUserId = claims.knackUserId as string | undefined;
     const knackUserRole = claims.knackUserRole as string | undefined;
+    const source = (claims.snap_source as string | undefined) || "knack"; // 'knack' | 'react'
     if (!tenantId || !pluginId) { res.status(400).json({ error: "Token missing claims" }); return; }
 
     const body = req.body as Record<string, unknown>;
@@ -686,6 +701,15 @@ export const submitSnap = functions.https.onRequest(
       status: "new",
       hipaaEnabled,
       retentionDays,
+      source, // 'knack' | 'react'
+      notifySubmitter: body.notifySubmitter !== false, // submitter's preference; default true
+      submitterEmail: (() => {
+        const ctx = (body.context as Record<string, unknown>) || {};
+        const email = (ctx.userEmail as string) ||
+          (ctx.knackUserEmail as string) ||
+          (typeof ctx.knackUserId === "string" && ctx.knackUserId.includes("@") ? ctx.knackUserId : "");
+        return email || null;
+      })(),
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     };
 
@@ -730,14 +754,13 @@ export const onSnapCreated = functions.firestore.onDocumentCreated(
     const tenantId = snap.tenantId as string;
     const pluginId = snap.pluginId as string;
 
-    const [pluginDoc, tenantDoc] = await Promise.all([
+    const [pluginDoc] = await Promise.all([
       db.collection("tenants").doc(tenantId).collection("snapPlugins").doc(pluginId).get(),
       db.collection("tenants").doc(tenantId).get(),
     ]);
 
     const pluginData = pluginDoc.data();
     const notifyEmails = (pluginData?.snapSettings?.notifyEmails as string[]) || [];
-    const tenantData = tenantDoc.data();
     const priority = snap.priority as string | undefined;
     const isCritical = priority === "critical";
     const hipaaMode = pluginData?.hipaaEnabled === true;
@@ -750,7 +773,8 @@ export const onSnapCreated = functions.firestore.onDocumentCreated(
     const pluginName = he(pluginData?.name || "Plugin");
 
     // ── Email notifications ───────────────────────────────────────────────────
-    if ((isCritical || tenantData?.notifyOnSnap) && notifyEmails.length > 0) {
+    const notificationsEnabled = pluginData?.snapSettings?.notificationsEnabled !== false;
+    if (notifyEmails.length > 0 && notificationsEnabled) {
       const key = await getSendGridKey();
       if (key) {
         sgMail.setApiKey(key);
@@ -1001,7 +1025,61 @@ export const onCommentCreated = functions.firestore.onDocumentCreated(
   }
 );
 
-// ── shareFeedWithTenant ──────────────────────────────────────────────────────
+// ── Firestore trigger: notify submitter on status change ─────────────────────
+
+export const onSnapHistoryCreated = functions.firestore.onDocumentCreated(
+  "snap_submissions/{submissionId}/history/{historyId}",
+  async (event) => {
+    const entry = event.data?.data() as Record<string, unknown> | undefined;
+    if (!entry || entry.changeType !== "status") return;
+
+    const submissionId = event.params.submissionId;
+    const submissionDoc = await db.collection("snap_submissions").doc(submissionId).get();
+    if (!submissionDoc.exists) return;
+    const submission = submissionDoc.data()!;
+
+    // Respect the per-snap toggle (default: true when email is present)
+    if (submission.notifySubmitter === false) return;
+
+    // Never email submitters on HIPAA snaps
+    if (submission.hipaaEnabled === true) return;
+
+    // Resolve submitter email: React apps store userEmail; Knack apps may store email as knackUserId
+    const ctx = (submission.context as Record<string, unknown>) || {};
+    const rawEmail = (submission.submitterEmail as string) ||
+      (ctx.userEmail as string) ||
+      (ctx.knackUserEmail as string) ||
+      (typeof ctx.knackUserId === "string" && ctx.knackUserId.includes("@") ? ctx.knackUserId : "");
+    if (!rawEmail) return;
+
+    const tenantId = submission.tenantId as string;
+    const pluginId = submission.pluginId as string;
+    const snapNumber = submission.snapNumber as number | undefined;
+    const category = ((submission.formData as Record<string, unknown>)?.category as string) || "Snap";
+    const pageUrl = (ctx.pageUrl as string) || "";
+
+    const pluginDoc = await db.collection("tenants").doc(tenantId).collection("snapPlugins").doc(pluginId).get();
+    const pluginName = he(pluginDoc.data()?.name || "Plugin");
+
+    const key = await getSendGridKey();
+    if (!key) return;
+    sgMail.setApiKey(key);
+
+    await sgMail.send({
+      from: SENDGRID_FROM,
+      ...submitterStatusUpdateEmail({
+        recipientEmail: rawEmail,
+        pluginName,
+        snapNumber,
+        category: he(category),
+        newStatus: (entry.toValue as string) || "unknown",
+        pageUrl: he(pageUrl),
+      }),
+    });
+  }
+);
+
+// ── shareFeedWithTenant ────────────────────────────────────────────────────────
 
 export const shareFeedWithTenant = functions.https.onCall(
   { enforceAppCheck: false },
@@ -1082,6 +1160,25 @@ export const shareFeedWithTenant = functions.https.onCall(
     await db.collection("users").doc(granteeUid).update({
       sharedPluginAccess: admin.firestore.FieldValue.arrayUnion(pluginId),
     });
+
+    // Notify the grantee by email — non-fatal
+    try {
+      const key = await getSendGridKey();
+      if (key) {
+        sgMail.setApiKey(key);
+        await sgMail.send({
+          from: SENDGRID_FROM,
+          ...sharedFeedEmail({
+            recipientEmail: email,
+            ownerCompanyName,
+            pluginName,
+            feedUrl: `${APP_DOMAIN}/snap-feed`,
+          }),
+        });
+      }
+    } catch {
+      // Email failure is non-fatal — share was already granted
+    }
 
     return { shareId: shareRef.id, grantedEmail: email, grantedCompanyName, pluginName };
   }
@@ -1440,6 +1537,81 @@ export const purgeExpiredSnaps = onSchedule(
       }
     }
     console.log(`[purgeExpiredSnaps] Purged ${purged} expired snap(s).`);
+  }
+);
+
+// ── deleteSnapPlugin ─────────────────────────────────────────────────────────
+// Deletes a snap plugin and ALL associated snap_submissions (+ their comment
+// subcollections and Storage screenshots). Runs in paginated batches of 400
+// so it never exceeds the Firestore 500-operation batch limit.
+
+export const deleteSnapPlugin = functions.https.onCall(
+  { enforceAppCheck: false },
+  async (request) => {
+    if (!request.auth) throw new functions.https.HttpsError("unauthenticated", "Must be signed in.");
+    const { pluginId, tenantId } = request.data as { pluginId: string; tenantId: string };
+
+    if (!pluginId || !tenantId) {
+      throw new functions.https.HttpsError("invalid-argument", "pluginId and tenantId are required.");
+    }
+    if (request.auth.uid !== tenantId) {
+      throw new functions.https.HttpsError("permission-denied", "Not authorized.");
+    }
+
+    // Verify plugin belongs to this tenant
+    const pluginRef = db.collection("tenants").doc(tenantId).collection("snapPlugins").doc(pluginId);
+    const pluginDoc = await pluginRef.get();
+    if (!pluginDoc.exists) throw new functions.https.HttpsError("not-found", "Plugin not found.");
+    if (pluginDoc.data()?.tenantId !== tenantId) {
+      throw new functions.https.HttpsError("permission-denied", "Not authorized.");
+    }
+
+    const bucket = admin.storage().bucket(STORAGE_BUCKET);
+    let deletedSnaps = 0;
+
+    // Paginated delete of snap_submissions for this plugin
+    let lastDoc: admin.firestore.QueryDocumentSnapshot | null = null;
+    while (true) {
+      let q = db.collection("snap_submissions")
+        .where("tenantId", "==", tenantId)
+        .where("pluginId", "==", pluginId)
+        .limit(400);
+      if (lastDoc) q = q.startAfter(lastDoc);
+
+      const snap = await q.get();
+      if (snap.empty) break;
+
+      const batch = db.batch();
+      for (const snapDoc of snap.docs) {
+        const snapId = snapDoc.id;
+
+        // Delete comment subcollection
+        const commentsSnap = await db.collection("snap_submissions").doc(snapId).collection("comments").get();
+        for (const commentDoc of commentsSnap.docs) {
+          batch.delete(commentDoc.ref);
+        }
+
+        // Delete screenshot from Storage (best-effort — don't fail if missing)
+        try {
+          await bucket.file(`snap_screenshots/${tenantId}/${snapId}.png`).delete();
+        } catch {
+          // file may not exist (e.g. text-only snap)
+        }
+
+        batch.delete(snapDoc.ref);
+        deletedSnaps++;
+      }
+      await batch.commit();
+
+      if (snap.size < 400) break;
+      lastDoc = snap.docs[snap.docs.length - 1];
+    }
+
+    // Finally delete the plugin document itself
+    await pluginRef.delete();
+
+    console.log(`[deleteSnapPlugin] Deleted plugin ${pluginId} and ${deletedSnaps} snap(s) for tenant ${tenantId}`);
+    return { success: true, deletedSnaps };
   }
 );
 

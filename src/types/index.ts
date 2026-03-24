@@ -79,6 +79,7 @@ export interface SnapSettings {
   formFields: FormField[];
   categories: string[];
   notifyEmails: string[];
+  notificationsEnabled?: boolean;
   hipaaEnabled?: boolean;
   retentionDays?: number;
   slackEnabled?: boolean;
@@ -94,6 +95,7 @@ export interface SnapPlugin {
   id: string;
   tenantId: string;
   connectionId: string;
+  appType?: 'knack' | 'react'; // 'knack' requires a connection; 'react' does not
   name: string;
   status: PluginStatus;
   selectedRoles: string[]; // KnackRole keys e.g. ['object_1', 'object_3']
@@ -130,8 +132,12 @@ export interface SubmissionContext {
   userAgent?: string;
   knackUserId?: string;
   knackUserName?: string;
-  knackRole?: string;       // Knack object key e.g. 'object_1'
+  knackUserEmail?: string;    // always the Knack user email (separate from knackUserId)
+  knackRole?: string;       // Knack object key e.g. 'profile_19'
+  knackRoleName?: string;   // Human-readable role name e.g. 'Staff'
   knackUserRole?: string;   // alias
+  userId?: string;          // Firebase UID (React/Firebase apps)
+  userEmail?: string;       // user email (React/Firebase apps)
   viewportWidth?: number;
   viewportHeight?: number;
   scrollX?: number;
@@ -182,8 +188,11 @@ export interface SnapSubmission {
   priority?: 'low' | 'medium' | 'high' | 'critical';
   hipaaEnabled?: boolean;
   retentionDays?: number;
+  source?: 'knack' | 'react'; // app origin
   snapNumber?: number;
   sortOrder?: number;
+  submitterEmail?: string;    // top-level email for notifications; extracted at submission time
+  notifySubmitter?: boolean; // send status-change emails to the submitter
   createdAt: Timestamp;
   resolvedAt?: Timestamp;
 }
@@ -202,6 +211,7 @@ export interface SnapComment {
   notify?: boolean;      // when true, fan-out email to all commenters
   dlpPending?: boolean;  // true while Cloud Function DLP processing is in-flight
   dlpFlagged?: boolean;  // true if DLP redacted any PHI
+  imageUrls?: string[];  // optional image attachments
 }
 
 export interface StatusHistoryEntry {

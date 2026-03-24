@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { doc, getDoc, updateDoc, collection, getDocs, query, where, serverTimestamp } from 'firebase/firestore';
 import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '../firebase';
@@ -15,6 +15,7 @@ import {
   UsersIcon,
   TrashIcon,
   ExclamationCircleIcon,
+  ExclamationTriangleIcon,
   LinkIcon,
   ShieldCheckIcon,
   BoltIcon,
@@ -28,6 +29,7 @@ type Tab = typeof TABS[number];
 export default function SnapPluginDetails() {
   const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
+  const navigate = useNavigate();
   const tenantId = user?.uid || '';
 
   const [plugin, setPlugin] = useState<SnapPlugin | null>(null);
@@ -37,6 +39,8 @@ export default function SnapPluginDetails() {
   const [activeTab, setActiveTab] = useState<Tab>('Details');
   const [saving, setSaving] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [embedTab, setEmbedTab] = useState<'knack' | 'react'>('knack');
+  const [copiedReact, setCopiedReact] = useState(false);
 
   // Invite state
   const [inviteEmail, setInviteEmail] = useState('');
@@ -52,6 +56,9 @@ export default function SnapPluginDetails() {
 
   const [hipaaSaving, setHipaaSaving] = useState(false);
   const [hipaaConfirm, setHipaaConfirm] = useState(false);
+  const [notifSaving, setNotifSaving] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   // Sharing state
   const [tenantShares, setTenantShares] = useState<TenantShare[]>([]);
@@ -79,8 +86,13 @@ export default function SnapPluginDetails() {
       if (pluginDoc.exists()) {
         const p = { id: pluginDoc.id, ...pluginDoc.data() } as SnapPlugin;
         setPlugin(p);
-        const connDoc = await getDoc(doc(db, 'tenants', tenantId, 'connections', p.connectionId));
-        if (connDoc.exists()) setConnection({ id: connDoc.id, ...connDoc.data() } as Connection);
+        if (p.appType === 'react') {
+          setEmbedTab('react');
+        }
+        if (p.connectionId) {
+          const connDoc = await getDoc(doc(db, 'tenants', tenantId, 'connections', p.connectionId));
+          if (connDoc.exists()) setConnection({ id: connDoc.id, ...connDoc.data() } as Connection);
+        }
       }
       const pluginInvitations = invSnap.docs
         .filter((d) => d.data().pluginIds?.includes(id))
@@ -157,6 +169,18 @@ export default function SnapPluginDetails() {
         ? 'All new snaps will be DLP-scanned. Retention set to 7 years (2,555 days). Existing snaps are not retroactively scanned.'
         : 'HIPAA mode disabled. Retention reset to 365 days.',
     });
+  };
+
+  const saveNotificationsEnabled = async (enable: boolean) => {
+    if (!id || !plugin) return;
+    setNotifSaving(true);
+    await updateDoc(doc(db, 'tenants', tenantId, 'snapPlugins', id), {
+      'snapSettings.notificationsEnabled': enable,
+    });
+    setPlugin((p) =>
+      p ? { ...p, snapSettings: { ...p.snapSettings, notificationsEnabled: enable } } : p
+    );
+    setNotifSaving(false);
   };
 
   const saveSlackIntegration = async () => {
@@ -308,6 +332,24 @@ export default function SnapPluginDetails() {
     }
   };
 
+  const handleDeletePlugin = async () => {
+    if (!id) return;
+    setDeleting(true);
+    try {
+      const fn = httpsCallable<{ pluginId: string; tenantId: string }, { success: boolean; deletedSnaps: number }>(
+        functions, 'deleteSnapPlugin'
+      );
+      await fn({ pluginId: id, tenantId });
+      navigate('/snap-plugins');
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to delete plugin.';
+      setModal({ open: true, type: 'error', title: 'Delete failed', message: msg });
+    } finally {
+      setDeleting(false);
+      setDeleteConfirm(false);
+    }
+  };
+
   if (loading) {
     return <div className="space-y-4">{[...Array(4)].map((_, i) => <div key={i} className="h-16 bg-gray-200 rounded-lg animate-pulse" />)}</div>;
   }
@@ -333,7 +375,12 @@ export default function SnapPluginDetails() {
         <div className="flex items-start justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">{plugin.name}</h1>
-            <p className="text-sm text-gray-400 mt-1">{connection?.name} · {plugin.selectedRoles.includes('*') ? 'All users' : `${plugin.selectedRoles.length} role${plugin.selectedRoles.length !== 1 ? 's' : ''}`}</p>
+            <p className="text-sm text-gray-400 mt-1">
+              {plugin.appType === 'react'
+                ? 'React / Firebase App · All logged-in users'
+                : `${connection?.name} · ${plugin.selectedRoles.includes('*') ? 'All users' : `${plugin.selectedRoles.length} role${plugin.selectedRoles.length !== 1 ? 's' : ''}`}`
+              }
+            </p>
           </div>
           <button
             onClick={toggleStatus}
@@ -351,7 +398,7 @@ export default function SnapPluginDetails() {
       {/* Tabs */}
       <div className="border-b border-gray-200 mb-6">
         <nav className="flex -mb-px space-x-8 overflow-x-auto">
-          {TABS.map((tab) => (
+          {TABS.filter((tab) => !(tab === 'Roles' && plugin.appType === 'react')).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -391,13 +438,46 @@ export default function SnapPluginDetails() {
                 ))}
               </dd>
             </div>
-            <div>
+            <div className="sm:col-span-2">
               <dt className="text-xs font-medium text-gray-500">Notification Emails</dt>
               <dd className="mt-1 text-sm text-gray-900">
                 {plugin.snapSettings.notifyEmails.length > 0 ? plugin.snapSettings.notifyEmails.join(', ') : '—'}
               </dd>
             </div>
           </dl>
+          {/* Notifications toggle */}
+          {plugin.snapSettings.notifyEmails.length > 0 && (
+            <div className="border border-gray-200 rounded-lg p-4">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <BoltIcon className={`h-5 w-5 flex-shrink-0 ${plugin.snapSettings.notificationsEnabled !== false ? 'text-blue-500' : 'text-gray-400'}`} />
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">Email Notifications</p>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      {plugin.snapSettings.notificationsEnabled !== false
+                        ? `Sending to: ${plugin.snapSettings.notifyEmails.join(', ')}`
+                        : 'Notifications are paused for this plugin'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => saveNotificationsEnabled(plugin.snapSettings.notificationsEnabled === false)}
+                  disabled={notifSaving}
+                  className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 ${
+                    plugin.snapSettings.notificationsEnabled !== false ? 'bg-blue-600' : 'bg-gray-200'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                      plugin.snapSettings.notificationsEnabled !== false ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* HIPAA toggle */}
           <div className="border border-gray-200 rounded-lg p-4 mt-2">
             <div className="flex items-center justify-between gap-4">
@@ -429,6 +509,19 @@ export default function SnapPluginDetails() {
               </p>
             )}
           </div>
+
+          {/* Danger Zone */}
+          <div className="border border-red-200 rounded-lg p-4 mt-2">
+            <h4 className="text-sm font-semibold text-red-700 mb-1">Danger Zone</h4>
+            <p className="text-xs text-gray-500 mb-3">Permanently deletes this plugin and all snaps in its feed. This cannot be undone.</p>
+            <button
+              onClick={() => setDeleteConfirm(true)}
+              className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-red-600 border border-red-300 rounded-lg hover:bg-red-50"
+            >
+              <TrashIcon className="h-4 w-4" />
+              Delete Plugin
+            </button>
+          </div>
         </div>
       )}
 
@@ -436,37 +529,136 @@ export default function SnapPluginDetails() {
         <RolesTab plugin={plugin} connection={connection} onSave={saveRoles} saving={saving} />
       )}
 
-      {activeTab === 'Embed Code' && connection && (
+      {activeTab === 'Embed Code' && (
         <div className="bg-white shadow rounded-lg p-6">
-          <h3 className="text-base font-semibold text-gray-900 mb-2">Embed in Knack</h3>
-          <p className="text-sm text-gray-500 mb-4">
-            Paste this code into your Knack app's JavaScript area (Builder → Settings → API & Code → JavaScript).
-          </p>
-          <div className="relative">
-            <pre className="bg-gray-900 text-green-400 text-xs rounded-lg p-4 overflow-x-auto leading-relaxed">
+          {/* Knack / React toggle */}
+          <div className="flex rounded-lg border border-gray-200 overflow-hidden w-fit mb-5">
+            <button
+              onClick={() => setEmbedTab('knack')}
+              className={`px-5 py-2 text-sm font-medium transition-colors ${
+                embedTab === 'knack' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              Knack
+            </button>
+            <button
+              onClick={() => setEmbedTab('react')}
+              className={`px-5 py-2 text-sm font-medium border-l border-gray-200 transition-colors ${
+                embedTab === 'react' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              React / Firebase
+            </button>
+          </div>
+
+          {embedTab === 'knack' && connection && (
+            <>
+              <h3 className="text-base font-semibold text-gray-900 mb-2">Embed in Knack</h3>
+              <p className="text-sm text-gray-500 mb-4">
+                Paste this code into your Knack app's JavaScript area (Builder → Settings → API & Code → JavaScript).
+              </p>
+              <div className="relative">
+                <pre className="bg-gray-900 text-green-400 text-xs rounded-lg p-4 overflow-x-auto leading-relaxed">
 {`(function(){var s=document.createElement('script');
 s.src='${WIDGET_BASE_URL}/widget/loader.js';
 s.onload=function(){Snap4KnackLoader.init({
   pluginId:'${plugin.id}',tenantId:'${tenantId}',appId:'${connection.appId}',
   primaryColor:'${plugin.customBranding?.primaryColor ?? '#3b82f6'}',position:'${plugin.customBranding?.position ?? 'bottom-right'}'
 })};document.head.appendChild(s)})();`}
-            </pre>
-            <button
-              onClick={copyEmbed}
-              className="absolute top-3 right-3 bg-gray-700 hover:bg-gray-600 text-white text-xs px-3 py-1.5 rounded-md flex items-center gap-1.5"
-            >
-              {copied ? <CheckIcon className="h-3 w-3" /> : <ClipboardDocumentIcon className="h-3 w-3" />}
-              {copied ? 'Copied!' : 'Copy'}
-            </button>
-          </div>
-          <div className="mt-4 bg-blue-50 rounded-lg px-4 py-3 text-sm text-blue-700">
-            <p className="font-medium">How it works:</p>
-            <ul className="mt-1 list-disc list-inside space-y-1 text-blue-600 text-xs">
-              <li>The loader detects the logged-in Knack user and their role</li>
-              <li>Only users whose role matches the selected roles will see the ● Snap button</li>
-              <li>Users with non-matching roles will not see anything</li>
-            </ul>
-          </div>
+                </pre>
+                <button
+                  onClick={copyEmbed}
+                  className="absolute top-3 right-3 bg-gray-700 hover:bg-gray-600 text-white text-xs px-3 py-1.5 rounded-md flex items-center gap-1.5"
+                >
+                  {copied ? <CheckIcon className="h-3 w-3" /> : <ClipboardDocumentIcon className="h-3 w-3" />}
+                  {copied ? 'Copied!' : 'Copy'}
+                </button>
+              </div>
+              <div className="mt-4 bg-blue-50 rounded-lg px-4 py-3 text-sm text-blue-700">
+                <p className="font-medium">How it works:</p>
+                <ul className="mt-1 list-disc list-inside space-y-1 text-blue-600 text-xs">
+                  <li>The loader detects the logged-in Knack user and their role</li>
+                  <li>Only users whose role matches the selected roles will see the ● Snap button</li>
+                  <li>Users with non-matching roles will not see anything</li>
+                </ul>
+              </div>
+            </>
+          )}
+
+          {embedTab === 'knack' && !connection && (
+            <div className="bg-yellow-50 rounded-lg px-4 py-4 text-sm text-yellow-700">
+              <p className="font-medium">No Knack connection linked to this plugin.</p>
+              <p className="text-yellow-600 text-xs mt-0.5">This is a React / Firebase plugin. Switch to the React tab to get the embed snippet.</p>
+            </div>
+          )}
+
+          {embedTab === 'react' && (
+            <>
+              <h3 className="text-base font-semibold text-gray-900 mb-2">Embed in a React / Firebase App</h3>
+              <p className="text-sm text-gray-500 mb-4">
+                Add this snippet after Firebase Auth confirms a logged-in user (e.g. inside a <code className="font-mono bg-gray-100 px-1 rounded">useEffect</code>).
+              </p>
+              <div className="relative">
+                <pre className="bg-gray-900 text-green-400 text-xs rounded-lg p-4 overflow-x-auto leading-relaxed">
+{`import { useEffect } from 'react';
+import { getAuth, onAuthStateChanged } from 'firebase/auth';
+
+useEffect(() => {
+  // Inject loader once — guarded against double-load
+  if (!document.querySelector('script[data-snap4knack-loader]')) {
+    const s = document.createElement('script');
+    s.src = '${WIDGET_BASE_URL}/widget/loader.js';
+    s.setAttribute('data-snap4knack-loader', '1');
+    document.head.appendChild(s);
+  }
+  const auth = getAuth();
+  const unsubscribe = onAuthStateChanged(auth, (user) => {
+    if (user) {
+      const tryInit = () => {
+        if (window.Snap4KnackLoader) {
+          window.Snap4KnackLoader.initReact({
+            pluginId: '${plugin.id}',
+            tenantId: '${tenantId}',
+            userId: user.uid,
+            userEmail: user.email ?? '',
+            primaryColor: '${plugin.customBranding?.primaryColor ?? '#3b82f6'}',
+            position: '${plugin.customBranding?.position ?? 'bottom-right'}',
+          });
+        } else { setTimeout(tryInit, 100); }
+      };
+      tryInit();
+    } else if (window.Snap4Knack) {
+      window.Snap4Knack.teardown();
+    }
+  });
+  return unsubscribe;
+}, []);`}
+                </pre>
+                <button
+                  onClick={() => {
+                    if (!plugin) return;
+                    const code = `import { useEffect } from 'react';\nimport { getAuth, onAuthStateChanged } from 'firebase/auth';\n\nuseEffect(() => {\n  if (!document.querySelector('script[data-snap4knack-loader]')) {\n    const s = document.createElement('script');\n    s.src = '${WIDGET_BASE_URL}/widget/loader.js';\n    s.setAttribute('data-snap4knack-loader', '1');\n    document.head.appendChild(s);\n  }\n  const auth = getAuth();\n  const unsubscribe = onAuthStateChanged(auth, (user) => {\n    if (user) {\n      const tryInit = () => {\n        if (window.Snap4KnackLoader) {\n          window.Snap4KnackLoader.initReact({\n            pluginId: '${plugin.id}',\n            tenantId: '${tenantId}',\n            userId: user.uid,\n            userEmail: user.email ?? '',\n            primaryColor: '${plugin.customBranding?.primaryColor ?? '#3b82f6'}',\n            position: '${plugin.customBranding?.position ?? 'bottom-right'}',\n          });\n        } else { setTimeout(tryInit, 100); }\n      };\n      tryInit();\n    } else if (window.Snap4Knack) {\n      window.Snap4Knack.teardown();\n    }\n  });\n  return unsubscribe;\n}, []);`;
+                    navigator.clipboard.writeText(code).then(() => {
+                      setCopiedReact(true);
+                      setTimeout(() => setCopiedReact(false), 2000);
+                    });
+                  }}
+                  className="absolute top-3 right-3 bg-gray-700 hover:bg-gray-600 text-white text-xs px-3 py-1.5 rounded-md flex items-center gap-1.5"
+                >
+                  {copiedReact ? <CheckIcon className="h-3 w-3" /> : <ClipboardDocumentIcon className="h-3 w-3" />}
+                  {copiedReact ? 'Copied!' : 'Copy'}
+                </button>
+              </div>
+              <div className="mt-4 bg-blue-50 rounded-lg px-4 py-3 text-sm text-blue-700">
+                <p className="font-medium">How it works:</p>
+                <ul className="mt-1 list-disc list-inside space-y-1 text-blue-600 text-xs">
+                  <li>The widget authenticates using the Firebase Auth user's UID</li>
+                  <li>All logged-in users see the ● Snap button — no role filtering applies</li>
+                  <li>Snaps appear in your feed tagged with source: React</li>
+                </ul>
+              </div>
+            </>
+          )}
         </div>
       )}
 
@@ -602,6 +794,41 @@ s.onload=function(){Snap4KnackLoader.init({
         </div>
       )}
       <Modal open={modal.open} type={modal.type} title={modal.title} message={modal.message} onClose={() => setModal((m) => ({ ...m, open: false }))} />
+      {/* Delete plugin confirm */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+            <div className="flex items-start gap-4">
+              <div className="flex-shrink-0 bg-red-100 rounded-full p-2">
+                <ExclamationTriangleIcon className="h-6 w-6 text-red-600" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-gray-900">Delete "{plugin?.name}"?</h3>
+                <p className="mt-1 text-sm text-gray-500">
+                  This will permanently delete this plugin and <strong>all snaps in its feed</strong>. This cannot be undone.
+                </p>
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                onClick={() => setDeleteConfirm(false)}
+                disabled={deleting}
+                className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeletePlugin}
+                disabled={deleting}
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg disabled:opacity-50"
+              >
+                {deleting ? 'Deleting…' : 'Delete Plugin'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <Modal
         open={hipaaConfirm}
         type="warning"

@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { collection, getDocs, addDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '../firebase';
+import { httpsCallable } from 'firebase/functions';
+import { db, functions } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import SEO from '../components/SEO';
 import {
@@ -9,6 +10,8 @@ import {
   PlusIcon,
   ChevronRightIcon,
   CheckCircleIcon,
+  TrashIcon,
+  ExclamationTriangleIcon,
 } from '@heroicons/react/24/outline';
 import type { Connection, SnapPlugin, KnackRole } from '../types';
 import { DEFAULT_SNAP_SETTINGS, DEFAULT_BRANDING, DEFAULT_CATEGORIES } from '../config/constants';
@@ -46,6 +49,7 @@ export default function SnapPlugins() {
 
   // Wizard state
   const [step, setStep] = useState<WizardStep>(1);
+  const [appType, setAppType] = useState<'knack' | 'react'>('knack');
   const [selectedConnectionId, setSelectedConnectionId] = useState('');
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
   const [pluginName, setPluginName] = useState('');
@@ -54,6 +58,8 @@ export default function SnapPlugins() {
   const [categories, setCategories] = useState<string[]>([...DEFAULT_CATEGORIES]);
   const [notifyEmails, setNotifyEmails] = useState('');
   const [saving, setSaving] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ open: boolean; pluginId: string; pluginName: string }>({ open: false, pluginId: '', pluginName: '' });
+  const [deleting, setDeleting] = useState(false);
 
   const selectedConnection = connections.find((c) => c.id === selectedConnectionId);
 
@@ -70,6 +76,7 @@ export default function SnapPlugins() {
 
   const openWizard = () => {
     setStep(1);
+    setAppType('knack');
     setSelectedConnectionId('');
     setSelectedRoles([]);
     setPluginName('');
@@ -90,12 +97,16 @@ export default function SnapPlugins() {
     setSaving(true);
     try {
       const emails = notifyEmails.split(',').map((e) => e.trim()).filter(Boolean);
+      const defaultName = appType === 'react'
+        ? (pluginName.trim() || 'React App Plugin')
+        : (pluginName.trim() || `Snap Plugin — ${selectedConnection?.name || ''}`);
       const pluginRef = await addDoc(collection(db, 'tenants', tenantId, 'snapPlugins'), {
         tenantId,
-        connectionId: selectedConnectionId,
-        name: pluginName.trim() || `Snap Plugin — ${selectedConnection?.name || ''}`,
+        appType,
+        connectionId: appType === 'react' ? '' : selectedConnectionId,
+        name: defaultName,
         status: 'active',
-        selectedRoles,
+        selectedRoles: appType === 'react' ? [] : selectedRoles,
         hipaaEnabled: hipaaEnabled || false,
         retentionDays: hipaaEnabled ? 2555 : 365,
         snapSettings: {
@@ -111,6 +122,21 @@ export default function SnapPlugins() {
     } finally {
       setSaving(false);
       setWizardOpen(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deleteConfirm.pluginId) return;
+    setDeleting(true);
+    try {
+      const fn = httpsCallable<{ pluginId: string; tenantId: string }, { success: boolean; deletedSnaps: number }>(
+        functions, 'deleteSnapPlugin'
+      );
+      await fn({ pluginId: deleteConfirm.pluginId, tenantId });
+      setPlugins((prev) => prev.filter((p) => p.id !== deleteConfirm.pluginId));
+    } finally {
+      setDeleting(false);
+      setDeleteConfirm({ open: false, pluginId: '', pluginName: '' });
     }
   };
 
@@ -153,26 +179,77 @@ export default function SnapPlugins() {
           <div className="divide-y divide-gray-100">
             {plugins.map((plugin) => {
               const conn = connections.find((c) => c.id === plugin.connectionId);
+              const isReact = plugin.appType === 'react';
               return (
-                <Link key={plugin.id} to={`/snap-plugins/${plugin.id}`} className="flex items-center gap-4 px-6 py-4 hover:bg-gray-50 transition-colors">
-                  <div className="bg-blue-50 rounded-lg p-2.5">
-                    <CameraIcon className="h-5 w-5 text-blue-600" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900">{plugin.name}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      {conn?.name || 'Unknown connection'} · {plugin.selectedRoles.length} role{plugin.selectedRoles.length !== 1 ? 's' : ''}
-                    </p>
-                  </div>
-                  <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                    plugin.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'
-                  }`}>
-                    {plugin.status}
-                  </span>
-                  <ChevronRightIcon className="h-5 w-5 text-gray-400" />
-                </Link>
+                <div key={plugin.id} className="flex items-center group hover:bg-gray-50 transition-colors">
+                  <Link to={`/snap-plugins/${plugin.id}`} className="flex items-center gap-4 px-6 py-4 flex-1 min-w-0">
+                    <div className="bg-blue-50 rounded-lg p-2.5">
+                      <CameraIcon className="h-5 w-5 text-blue-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900">{plugin.name}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {isReact
+                          ? 'React / Firebase App'
+                          : `${conn?.name || 'Unknown connection'} · ${plugin.selectedRoles.length} role${plugin.selectedRoles.length !== 1 ? 's' : ''}`
+                        }
+                      </p>
+                    </div>
+                    {isReact && (
+                      <span className="inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">React</span>
+                    )}
+                    <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                      plugin.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'
+                    }`}>
+                      {plugin.status}
+                    </span>
+                    <ChevronRightIcon className="h-5 w-5 text-gray-400" />
+                  </Link>
+                  <button
+                    onClick={() => setDeleteConfirm({ open: true, pluginId: plugin.id, pluginName: plugin.name })}
+                    className="mr-4 p-2 text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all rounded-lg hover:bg-red-50"
+                    title="Delete plugin"
+                  >
+                    <TrashIcon className="h-4 w-4" />
+                  </button>
+                </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirm Modal */}
+      {deleteConfirm.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+            <div className="flex items-start gap-4">
+              <div className="flex-shrink-0 bg-red-100 rounded-full p-2">
+                <ExclamationTriangleIcon className="h-6 w-6 text-red-600" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-gray-900">Delete "{deleteConfirm.pluginName}"?</h3>
+                <p className="mt-1 text-sm text-gray-500">
+                  This will permanently delete the plugin and <strong>all snaps in its feed</strong>. This action cannot be undone.
+                </p>
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                onClick={() => setDeleteConfirm({ open: false, pluginId: '', pluginName: '' })}
+                disabled={deleting}
+                className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-700 rounded-lg disabled:opacity-50"
+              >
+                {deleting ? 'Deleting…' : 'Delete Plugin'}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -182,61 +259,146 @@ export default function SnapPlugins() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-xl max-h-[90vh] overflow-y-auto">
             <div className="px-6 pt-6">
-              <StepIndicator current={step} total={4} />
+              <StepIndicator current={step} total={appType === 'react' ? 3 : 4} />
               <h2 className="text-lg font-semibold text-gray-900 mb-1">
-                {step === 1 && 'Choose Connection'}
-                {step === 2 && 'Select Roles'}
-                {step === 3 && 'Configure Snap Settings'}
+                {step === 1 && 'Choose App Type'}
+                {step === 2 && (appType === 'react' ? 'Configure Snap Settings' : 'Select Roles')}
+                {step === 3 && (appType === 'react' ? 'Review & Activate' : 'Configure Snap Settings')}
                 {step === 4 && 'Review & Activate'}
               </h2>
               <p className="text-sm text-gray-500 mb-6">
-                {step === 1 && 'Which Knack app will this widget be embedded in?'}
-                {step === 2 && 'Which user role tables should have access to the snap widget?'}
-                {step === 3 && 'Configure how the snap widget behaves.'}
+                {step === 1 && 'Choose how this widget will be embedded.'}
+                {step === 2 && (appType === 'react' ? 'Configure how the snap widget behaves.' : 'Which user role tables should have access to the snap widget?')}
+                {step === 3 && (appType === 'react' ? 'Review your settings before creating the plugin.' : 'Configure how the snap widget behaves.')}
                 {step === 4 && 'Review your settings before creating the plugin.'}
               </p>
             </div>
 
             <div className="px-6 pb-6">
-              {/* Step 1: Choose Connection */}
+              {/* Step 1: Choose App Type + Connection */}
               {step === 1 && (
-                <div className="space-y-2">
-                  {connections.length === 0 ? (
-                    <div className="text-center py-8">
-                      <p className="text-sm text-gray-500">No connections yet.</p>
-                      <Link to="/connections" onClick={() => setWizardOpen(false)} className="text-sm text-blue-600 hover:underline mt-1 inline-block">
-                        Add a connection first →
-                      </Link>
+                <div className="space-y-4">
+                  {/* App type toggle */}
+                  <div className="flex rounded-lg border border-gray-200 overflow-hidden">
+                    <button
+                      onClick={() => { setAppType('knack'); setSelectedConnectionId(''); }}
+                      className={`flex-1 py-3 text-sm font-medium transition-colors ${
+                        appType === 'knack' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+                      }`}
+                    >
+                      Knack App
+                    </button>
+                    <button
+                      onClick={() => { setAppType('react'); setSelectedConnectionId(''); setSelectedRoles([]); }}
+                      className={`flex-1 py-3 text-sm font-medium border-l border-gray-200 transition-colors ${
+                        appType === 'react' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
+                      }`}
+                    >
+                      React / Firebase App
+                    </button>
+                  </div>
+
+                  {appType === 'react' ? (
+                    <div className="bg-indigo-50 rounded-lg px-4 py-4 text-sm text-indigo-700 space-y-1">
+                      <p className="font-medium">No Knack connection needed.</p>
+                      <p className="text-indigo-600 text-xs">The widget will authenticate using Firebase Auth. All logged-in users will see the Snap button — no role filtering applies.</p>
                     </div>
                   ) : (
-                    connections.map((conn) => (
-                      <button
-                        key={conn.id}
-                        onClick={() => setSelectedConnectionId(conn.id)}
-                        className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg border-2 transition-colors ${
-                          selectedConnectionId === conn.id
-                            ? 'border-blue-600 bg-blue-50'
-                            : 'border-gray-200 hover:border-gray-300'
-                        }`}
-                      >
-                        <div className="bg-blue-100 rounded-lg p-2">
-                          <CameraIcon className="h-5 w-5 text-blue-600" />
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Select a Knack connection</p>
+                      {connections.length === 0 ? (
+                        <div className="text-center py-8">
+                          <p className="text-sm text-gray-500">No connections yet.</p>
+                          <Link to="/connections" onClick={() => setWizardOpen(false)} className="text-sm text-blue-600 hover:underline mt-1 inline-block">
+                            Add a connection first →
+                          </Link>
                         </div>
-                        <div className="text-left">
-                          <p className="text-sm font-medium text-gray-900">{conn.name}</p>
-                          <p className="text-xs text-gray-400 font-mono">{conn.appId}</p>
-                        </div>
-                        {selectedConnectionId === conn.id && (
-                          <CheckCircleIcon className="h-5 w-5 text-blue-600 ml-auto" />
-                        )}
-                      </button>
-                    ))
+                      ) : (
+                        connections.map((conn) => (
+                          <button
+                            key={conn.id}
+                            onClick={() => setSelectedConnectionId(conn.id)}
+                            className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg border-2 transition-colors ${
+                              selectedConnectionId === conn.id
+                                ? 'border-blue-600 bg-blue-50'
+                                : 'border-gray-200 hover:border-gray-300'
+                            }`}
+                          >
+                            <div className="bg-blue-100 rounded-lg p-2">
+                              <CameraIcon className="h-5 w-5 text-blue-600" />
+                            </div>
+                            <div className="text-left">
+                              <p className="text-sm font-medium text-gray-900">{conn.name}</p>
+                              <p className="text-xs text-gray-400 font-mono">{conn.appId}</p>
+                            </div>
+                            {selectedConnectionId === conn.id && (
+                              <CheckCircleIcon className="h-5 w-5 text-blue-600 ml-auto" />
+                            )}
+                          </button>
+                        ))
+                      )}
+                    </div>
                   )}
                 </div>
               )}
 
-              {/* Step 2: Select Roles */}
-              {step === 2 && selectedConnection && (
+              {/* Step 2: Select Roles (Knack) or Settings (React) */}
+              {step === 2 && appType === 'react' && (
+                <div className="space-y-5">
+                  <div className="bg-indigo-50 rounded-lg px-4 py-3 text-sm text-indigo-700">
+                    <p className="font-medium">No role selection needed.</p>
+                    <p className="text-indigo-600 text-xs mt-0.5">All authenticated Firebase users will see the Snap button.</p>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Plugin Name</label>
+                    <input
+                      type="text"
+                      value={pluginName}
+                      onChange={(e) => setPluginName(e.target.value)}
+                      className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                      placeholder="React App Plugin"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between py-3 border-t border-gray-100">
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">HIPAA Compliant Mode</p>
+                      <p className="text-xs text-gray-400">PHI scanning, 7-year retention, recording disabled</p>
+                    </div>
+                    <button
+                      onClick={() => { const next = !hipaaEnabled; setHipaaEnabled(next); if (next) setAllowRecording(false); }}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${ hipaaEnabled ? 'bg-green-600' : 'bg-gray-200' }`}
+                    >
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${ hipaaEnabled ? 'translate-x-6' : 'translate-x-1' }`} />
+                    </button>
+                  </div>
+                  <div className={`flex items-center justify-between py-3 border-t border-gray-100 ${ hipaaEnabled ? 'opacity-40 pointer-events-none' : '' }`}>
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">Allow Screen Recording</p>
+                      <p className="text-xs text-gray-400">Enables the video capture mode in the widget</p>
+                    </div>
+                    <button
+                      onClick={() => setAllowRecording((v) => !v)}
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${ allowRecording ? 'bg-blue-600' : 'bg-gray-200' }`}
+                    >
+                      <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${ allowRecording ? 'translate-x-6' : 'translate-x-1' }`} />
+                    </button>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Notification Emails <span className="text-gray-400 font-normal">(comma-separated)</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={notifyEmails}
+                      onChange={(e) => setNotifyEmails(e.target.value)}
+                      className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                      placeholder="team@company.com"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {step === 2 && appType === 'knack' && selectedConnection && (
                 <div className="space-y-2">
                   {selectedConnection.roles.length === 0 ? (
                     <div className="bg-yellow-50 rounded-lg px-4 py-3 text-sm text-yellow-700">
@@ -272,8 +434,38 @@ export default function SnapPlugins() {
                 </div>
               )}
 
-              {/* Step 3: Configure Settings */}
-              {step === 3 && (
+              {/* Step 3: Settings (Knack) OR Review (React) */}
+              {step === 3 && appType === 'react' && (
+                <div className="space-y-4">
+                  <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">App Type</span>
+                      <span className="font-medium text-indigo-700">React / Firebase App</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">Plugin Name</span>
+                      <span className="font-medium text-gray-900">{pluginName || 'React App Plugin'}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">Role Filtering</span>
+                      <span className="font-medium text-gray-900">None — all logged-in users</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-500">Screen Recording</span>
+                      <span className="font-medium text-gray-900">{hipaaEnabled ? 'Disabled (HIPAA)' : allowRecording ? 'Enabled' : 'Disabled'}</span>
+                    </div>
+                    {hipaaEnabled && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-500">HIPAA Mode</span>
+                        <span className="font-medium text-green-700">✓ Enabled — 7-year retention, DLP scanning</span>
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-xs text-gray-400">After creation you'll be taken to the plugin details page where you can copy the React embed code and configure branding.</p>
+                </div>
+              )}
+
+              {step === 3 && appType === 'knack' && (
                 <div className="space-y-5">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Plugin Name</label>
@@ -354,7 +546,7 @@ export default function SnapPlugins() {
                 </div>
               )}
 
-              {/* Step 4: Review */}
+              {/* Step 4: Review (Knack only) */}
               {step === 4 && (
                 <div className="space-y-4">
                   <div className="bg-gray-50 rounded-lg p-4 space-y-3">
@@ -404,12 +596,13 @@ export default function SnapPlugins() {
                 >
                   {step === 1 ? 'Cancel' : '← Back'}
                 </button>
-                {step < 4 ? (
+                {/* React: 3 steps total (1,2,3); Knack: 4 steps */}
+                {((appType === 'react' && step < 3) || (appType === 'knack' && step < 4)) ? (
                   <button
                     onClick={() => setStep((s) => (s + 1) as WizardStep)}
                     disabled={
-                      (step === 1 && !selectedConnectionId) ||
-                      (step === 2 && selectedRoles.length === 0)
+                      (step === 1 && appType === 'knack' && !selectedConnectionId) ||
+                      (step === 2 && appType === 'knack' && selectedRoles.length === 0)
                     }
                     className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg disabled:opacity-40"
                   >

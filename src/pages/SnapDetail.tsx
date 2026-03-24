@@ -4,7 +4,8 @@ import {
   doc, updateDoc, collection, addDoc, serverTimestamp,
   query, orderBy, onSnapshot,
 } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db, storage } from '../firebase';
+import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { useAuth } from '../contexts/AuthContext';
 import SEO from '../components/SEO';
 import {
@@ -16,6 +17,9 @@ import {
   ChevronUpIcon,
   VideoCameraIcon,
   ExclamationCircleIcon,
+  PhotoIcon,
+  XMarkIcon,
+  BellIcon,
 } from '@heroicons/react/24/outline';
 import type { SnapSubmission, SnapComment, AnnotationShape, StatusHistoryEntry } from '../types';
 import { STATUS_OPTIONS, PRIORITY_OPTIONS, CAPTURE_TYPE_LABELS } from '../config/constants';
@@ -31,6 +35,10 @@ export default function SnapDetail() {
   const [commentText, setCommentText] = useState('');
   const [postingComment, setPostingComment] = useState(false);
   const [notifyComment, setNotifyComment] = useState(false);
+  const [notifySubmitterSaving, setNotifySubmitterSaving] = useState(false);
+  const [commentImages, setCommentImages] = useState<File[]>([]);;
+  const [commentImagePreviews, setCommentImagePreviews] = useState<string[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [showConsole, setShowConsole] = useState(false);
   const [history, setHistory] = useState<StatusHistoryEntry[]>([]);
   const auditLoggedRef = useRef(false);
@@ -160,9 +168,37 @@ export default function SnapDetail() {
     });
   };
 
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    const combined = [...commentImages, ...files].slice(0, 4);
+    setCommentImages(combined);
+    setCommentImagePreviews(combined.map((f) => URL.createObjectURL(f)));
+    e.target.value = '';
+  };
+
+  const removeCommentImage = (idx: number) => {
+    URL.revokeObjectURL(commentImagePreviews[idx]);
+    setCommentImages((prev) => prev.filter((_, i) => i !== idx));
+    setCommentImagePreviews((prev) => prev.filter((_, i) => i !== idx));
+  };
+
   const postComment = async () => {
-    if (!commentText.trim() || !id) return;
+    if (!commentText.trim() && commentImages.length === 0) return;
+    if (!id) return;
     setPostingComment(true);
+    let imageUrls: string[] = [];
+    if (commentImages.length > 0) {
+      imageUrls = await Promise.all(
+        commentImages.map(async (file) => {
+          const ext = file.name.split('.').pop() || 'jpg';
+          const path = `comment_images/${tenantId}/${id}/${crypto.randomUUID()}.${ext}`;
+          const sRef = storageRef(storage, path);
+          await uploadBytes(sRef, file);
+          return getDownloadURL(sRef);
+        })
+      );
+    }
     const c: Omit<SnapComment, 'id'> = {
       submissionId: id,
       authorId: tenantId,
@@ -170,13 +206,26 @@ export default function SnapDetail() {
       text: commentText.trim(),
       notify: notifyComment,
       createdAt: serverTimestamp() as SnapComment['createdAt'],
-      dlpPending: true,
+      dlpPending: sub?.hipaaEnabled === true,
+      ...(imageUrls.length > 0 ? { imageUrls } : {}),
     };
     await addDoc(collection(db, 'snap_submissions', id, 'comments'), c);
     // No manual setComments — the onSnapshot listener will pick up the new comment
+    commentImagePreviews.forEach((u) => URL.revokeObjectURL(u));
     setCommentText('');
     setNotifyComment(false);
+    setCommentImages([]);
+    setCommentImagePreviews([]);
     setPostingComment(false);
+  };
+
+  const toggleNotifySubmitter = async () => {
+    if (!id || !sub) return;
+    const next = sub.notifySubmitter === false ? true : false;
+    setNotifySubmitterSaving(true);
+    await updateDoc(doc(db, 'snap_submissions', id), { notifySubmitter: next });
+    setSub((s) => s ? { ...s, notifySubmitter: next } : s);
+    setNotifySubmitterSaving(false);
   };
 
   const updateStatus = async (status: string) => {
@@ -393,7 +442,22 @@ export default function SnapDetail() {
                           <span className="text-xs text-gray-400 italic">Processing…</span>
                         </div>
                       ) : (
-                        <p className="text-sm text-gray-700 mt-0.5">{c.text}</p>
+                        <>
+                          {c.text && <p className="text-sm text-gray-700 mt-0.5">{c.text}</p>}
+                          {c.imageUrls && c.imageUrls.length > 0 && (
+                            <div className="flex flex-wrap gap-2 mt-2">
+                              {c.imageUrls.map((url, i) => (
+                                <a key={i} href={url} target="_blank" rel="noopener noreferrer">
+                                  <img
+                                    src={url}
+                                    alt={`attachment ${i + 1}`}
+                                    className="h-24 w-auto max-w-[180px] rounded-lg border border-gray-200 object-cover hover:opacity-90 cursor-zoom-in"
+                                  />
+                                </a>
+                              ))}
+                            </div>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
@@ -404,6 +468,22 @@ export default function SnapDetail() {
               )}
             </div>
             <div className="space-y-2">
+              {commentImagePreviews.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {commentImagePreviews.map((src, i) => (
+                    <div key={i} className="relative group">
+                      <img src={src} alt={`preview ${i + 1}`} className="h-20 w-auto max-w-[140px] rounded-lg border border-gray-200 object-cover" />
+                      <button
+                        type="button"
+                        onClick={() => removeCommentImage(i)}
+                        className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-gray-700 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <XMarkIcon className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
               <div className="flex gap-2">
                 <input
                   value={commentText}
@@ -413,8 +493,25 @@ export default function SnapDetail() {
                   className="flex-1 rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
                 />
                 <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={commentImages.length >= 4}
+                  title={commentImages.length >= 4 ? 'Max 4 images' : 'Attach image'}
+                  className="p-2 rounded-lg border border-gray-300 text-gray-400 hover:text-blue-500 hover:border-blue-300 bg-white disabled:opacity-40"
+                >
+                  <PhotoIcon className="h-5 w-5" />
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={handleImageSelect}
+                />
+                <button
                   onClick={postComment}
-                  disabled={!commentText.trim() || postingComment}
+                  disabled={(!commentText.trim() && commentImages.length === 0) || postingComment}
                   className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg disabled:opacity-50"
                 >
                   {postingComment ? '…' : 'Post'}
@@ -483,6 +580,42 @@ export default function SnapDetail() {
             </div>
           </div>
 
+          {/* Submitter notifications toggle — only shown when we have a submitter email */}
+          {(() => {
+            const email = sub.submitterEmail ||
+              sub.context?.userEmail ||
+              sub.context?.knackUserEmail ||
+              (sub.context?.knackUserId?.includes('@') ? sub.context.knackUserId : null);
+            if (!email || sub.hipaaEnabled) return null;
+            const enabled = sub.notifySubmitter !== false;
+            return (
+              <div className="bg-white shadow rounded-lg p-5">
+                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Submitter Notifications</h3>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <BellIcon className={`h-4 w-4 flex-shrink-0 ${enabled ? 'text-blue-500' : 'text-gray-400'}`} />
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium text-gray-700 truncate">{email}</p>
+                      <p className="text-xs text-gray-400">{enabled ? 'Will be notified on status changes' : 'Notifications off'}</p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={toggleNotifySubmitter}
+                    disabled={notifySubmitterSaving}
+                    className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 ${
+                      enabled ? 'bg-blue-600' : 'bg-gray-200'
+                    }`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                      enabled ? 'translate-x-6' : 'translate-x-1'
+                    }`} />
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Metadata */}
           <div className="bg-white shadow rounded-lg p-5">
             <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Submission Info</h3>
@@ -512,13 +645,17 @@ export default function SnapDetail() {
               {sub.context?.pageUrl && (
                 <div>
                   <dt className="text-gray-400 text-xs">Page</dt>
-                  <dd className="text-gray-700 break-all text-xs">{sub.context.pageUrl}</dd>
+                  <dd className="text-gray-700 break-all text-xs">
+                    <a href={sub.context.pageUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">{sub.context.pageUrl}</a>
+                  </dd>
                 </div>
               )}
-              {sub.context?.knackUserName && (
+              {(sub.context?.knackUserName || sub.context?.userEmail || sub.context?.userId) && (
                 <div>
                   <dt className="text-gray-400 text-xs">Submitted By</dt>
-                  <dd className="text-gray-700 font-medium">{sub.context.knackUserName}</dd>
+                  <dd className="text-gray-700 font-medium">
+                    {sub.context.knackUserName || sub.context.userEmail || sub.context.userId}
+                  </dd>
                 </div>
               )}
               {sub.context?.knackUserId && (
@@ -527,10 +664,16 @@ export default function SnapDetail() {
                   <dd className="font-mono text-xs text-gray-700">{sub.context.knackUserId}</dd>
                 </div>
               )}
+              {sub.source === 'react' && (
+                <div>
+                  <dt className="text-gray-400 text-xs">App Source</dt>
+                  <dd><span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700">React App</span></dd>
+                </div>
+              )}
               {sub.context?.knackRole && (
                 <div>
                   <dt className="text-gray-400 text-xs">Knack Role</dt>
-                  <dd className="text-gray-700">{sub.context.knackRole}</dd>
+                  <dd className="text-gray-700">{sub.context.knackRoleName || sub.context.knackRole}</dd>
                 </div>
               )}
               {sub.context?.userAgent && (
@@ -555,7 +698,7 @@ export default function SnapDetail() {
                 <span className="mt-0.5 h-5 w-5 rounded-full bg-blue-50 flex items-center justify-center text-blue-400 flex-shrink-0">✦</span>
                 <div>
                   <span className="font-medium text-gray-700">
-                    {sub.context?.knackUserName ?? 'Widget user'}
+                    {sub.context?.knackUserName || sub.context?.userEmail || sub.context?.userId || 'Widget user'}
                   </span>
                   <span className="text-gray-500"> submitted snap</span>
                   {sub.snapNumber != null && (

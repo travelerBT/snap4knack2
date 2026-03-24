@@ -35,6 +35,15 @@
       ]
     },
     {
+      "collectionGroup": "snap_submissions",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tenantId", "order": "ASCENDING" },
+        { "fieldPath": "source", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "tenant_shares",
       "queryScope": "COLLECTION",
       "fields": [

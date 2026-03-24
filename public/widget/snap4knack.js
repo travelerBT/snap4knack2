@@ -31,7 +31,9 @@
     idTokenAcquiredAt: 0,
     knackUser: null,
     knackRole: null,
+    knackRoleName: null,
     open: false,
+    expanded: false,
     mode: null,
     step: 'mode',       // 'mode' | 'capture' | 'annotate' | 'form' | 'submitting' | 'done'
     captureBlob: null,
@@ -55,6 +57,9 @@
     categories: ['Bug', 'Feature Request', 'Question', 'Other'],
     hipaaEnabled: false,
     allowRecording: false,
+    appSource: null,  // 'knack' | 'react'
+    reactUser: null,  // { userId, userEmail }
+    notifySubmitter: true, // submitter's preference, set in form step
   };
 
   // ── Console capture (all levels) ──────────────────────────────────────────
@@ -144,14 +149,17 @@
 
   // ── Auth: request widget token from Cloud Function ─────────────────────────
 
-  function getWidgetToken(pluginId, tenantId, knackUserId, knackUserRole) {
+  function getWidgetToken(pluginId, tenantId, userId, userRole) {
     // onRequest — send data directly, response is { token: "..." }
-    return req('POST', FUNCTIONS_BASE + '/issueWidgetToken', {
-      pluginId: pluginId,
-      tenantId: tenantId,
-      knackUserId: knackUserId,
-      knackUserRole: knackUserRole,
-    }).then(function (resp) {
+    var body = { pluginId: pluginId, tenantId: tenantId };
+    if (state.appSource === 'react') {
+      body.userId = userId;
+      body.userRole = userRole || 'authenticated';
+    } else {
+      body.knackUserId = userId;
+      body.knackUserRole = userRole;
+    }
+    return req('POST', FUNCTIONS_BASE + '/issueWidgetToken', body).then(function (resp) {
       // Exchange custom token for Firebase ID token
       return exchangeCustomToken(resp.token);
     });
@@ -202,11 +210,15 @@
     if (state.idToken && tokenAge < EXPIRY_MS) {
       return Promise.resolve(state.idToken);
     }
-    if (!state.knackUser || !state.config) {
+    var activeUser = state.appSource === 'react' ? state.reactUser : state.knackUser;
+    if (!activeUser || !state.config) {
       return Promise.reject(new Error('Not authenticated'));
     }
-    var userId = state.knackUser.id || state.knackUser.email || 'anonymous';
-    return getWidgetToken(state.config.pluginId, state.config.tenantId, userId, state.knackRole)
+    var userId = state.appSource === 'react'
+      ? (activeUser.userId || activeUser.userEmail || 'anonymous')
+      : (activeUser.id || activeUser.email || 'anonymous');
+    var userRole = state.appSource === 'react' ? 'authenticated' : state.knackRole;
+    return getWidgetToken(state.config.pluginId, state.config.tenantId, userId, userRole)
       .then(function (idToken) {
         state.idToken = idToken;
         state.idTokenAcquiredAt = Date.now();
@@ -271,12 +283,20 @@
 
   function closeDrawer() {
     state.open = false;
+    state.expanded = false;
     var drawer = document.getElementById('s4k-drawer');
     if (drawer) drawer.remove();
     var overlay = document.getElementById('s4k-overlay');
     if (overlay) overlay.remove();
+    var backdrop = document.getElementById('s4k-modal-backdrop');
+    if (backdrop) backdrop.remove();
     stopRecording();
     resetCaptureState();
+  }
+
+  function toggleExpand() {
+    state.expanded = !state.expanded;
+    renderDrawer();
   }
 
   function resetCaptureState() {
@@ -287,30 +307,70 @@
     state.annotations = [];
     state.currentShape = null;
     state.mode = null;
+    state.notifySubmitter = true;
   }
 
   function renderDrawer() {
     var existing = document.getElementById('s4k-drawer');
     if (existing) existing.remove();
 
+    // Manage backdrop for expanded modal mode
+    var existingBackdrop = document.getElementById('s4k-modal-backdrop');
+    if (existingBackdrop) existingBackdrop.remove();
+    if (state.expanded) {
+      var backdrop = el('div');
+      backdrop.id = 's4k-modal-backdrop';
+      css(backdrop, {
+        position: 'fixed', top: '0', left: '0', width: '100%', height: '100%',
+        background: 'rgba(0,0,0,0.55)', zIndex: '2147483600',
+        transition: 'opacity 0.2s ease',
+      });
+      backdrop.addEventListener('click', function () {
+        state.expanded = false;
+        renderDrawer();
+      });
+      document.body.appendChild(backdrop);
+    }
+
     var drawer = el('div');
     drawer.id = 's4k-drawer';
-    css(drawer, {
-      position: 'fixed',
-      right: '0',
-      top: '0',
-      width: '340px',
-      height: '100%',
-      background: '#fff',
-      boxShadow: '-4px 0 20px rgba(0,0,0,0.15)',
-      zIndex: '2147483601',
-      display: 'flex',
-      flexDirection: 'column',
-      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-      fontSize: '14px',
-      color: '#111827',
-      overflowY: 'auto',
-    });
+    if (state.expanded) {
+      css(drawer, {
+        position: 'fixed',
+        top: '50%',
+        left: '50%',
+        transform: 'translate(-50%, -50%)',
+        width: 'min(92vw, 960px)',
+        height: 'min(90vh, 860px)',
+        background: '#fff',
+        boxShadow: '0 24px 64px rgba(0,0,0,0.35)',
+        zIndex: '2147483601',
+        display: 'flex',
+        flexDirection: 'column',
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+        fontSize: '14px',
+        color: '#111827',
+        overflowY: 'hidden',
+        borderRadius: '14px',
+      });
+    } else {
+      css(drawer, {
+        position: 'fixed',
+        right: '0',
+        top: '0',
+        width: '340px',
+        height: '100%',
+        background: '#fff',
+        boxShadow: '-4px 0 20px rgba(0,0,0,0.15)',
+        zIndex: '2147483601',
+        display: 'flex',
+        flexDirection: 'column',
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+        fontSize: '14px',
+        color: '#111827',
+        overflowY: 'auto',
+      });
+    }
 
     // Header
     var header = el('div', '', '');
@@ -327,6 +387,32 @@
     var title = el('span', '', '');
     title.innerHTML = '<span style="display:flex;align-items:center;gap:8px">' + CAMERA_SVG + '<span>Send Feedback</span></span>';
     css(title, { fontWeight: '600', fontSize: '15px' });
+
+    // Right-side controls: expand button + close button
+    var controls = el('div', '');
+    css(controls, { display: 'flex', alignItems: 'center', gap: '6px' });
+
+    var EXPAND_SVG   = '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" width="15" height="15"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15" /></svg>';
+    var COLLAPSE_SVG = '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" width="15" height="15"><path stroke-linecap="round" stroke-linejoin="round" d="M9 9V4.5M9 9H4.5M9 9 3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5 5.25 5.25" /></svg>';
+
+    var expandBtn = el('button', '', state.expanded ? COLLAPSE_SVG : EXPAND_SVG);
+    expandBtn.title = state.expanded ? 'Collapse to panel' : 'Expand to full window';
+    css(expandBtn, {
+      background: 'rgba(255,255,255,0.2)',
+      border: 'none',
+      color: '#fff',
+      width: '28px', height: '28px',
+      borderRadius: '50%',
+      cursor: 'pointer',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexShrink: '0',
+    });
+    expandBtn.addEventListener('click', function (e) { e.stopPropagation(); toggleExpand(); });
+    expandBtn.addEventListener('mouseenter', function () { expandBtn.style.background = 'rgba(255,255,255,0.35)'; });
+    expandBtn.addEventListener('mouseleave', function () { expandBtn.style.background = 'rgba(255,255,255,0.2)'; });
+
     var closeBtn = el('button', '', '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" width="16" height="16"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12" /></svg>');
     css(closeBtn, {
       background: 'rgba(255,255,255,0.2)',
@@ -341,8 +427,13 @@
       flexShrink: '0',
     });
     closeBtn.addEventListener('click', closeDrawer);
+    closeBtn.addEventListener('mouseenter', function () { closeBtn.style.background = 'rgba(255,255,255,0.35)'; });
+    closeBtn.addEventListener('mouseleave', function () { closeBtn.style.background = 'rgba(255,255,255,0.2)'; });
+
+    controls.appendChild(expandBtn);
+    controls.appendChild(closeBtn);
     header.appendChild(title);
-    header.appendChild(closeBtn);
+    header.appendChild(controls);
     drawer.appendChild(header);
 
     // Body
@@ -775,7 +866,7 @@
 
     // Canvas container
     var imgWrap = el('div', '');
-    css(imgWrap, { position: 'relative', overflow: 'auto', maxHeight: '380px' });
+    css(imgWrap, { position: 'relative', overflow: 'auto', maxHeight: state.expanded ? 'calc(min(90vh, 860px) - 215px)' : '380px' });
 
     var img = new Image();
     img.src = state.captureDataUrl;
@@ -1050,6 +1141,30 @@
       wrap.appendChild(consoleChk);
     }
 
+    // "Notify me" checkbox — only shown when we have a submitter email
+    var submitterEmail = (state.appSource !== 'react')
+      ? (state.knackUser && (state.knackUser.email || state.knackUser.identifier))
+      : (state.reactUser && state.reactUser.userEmail);
+    if (submitterEmail && !state.hipaaEnabled) {
+      var notifyChk = el('label', '');
+      css(notifyChk, {
+        display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer',
+        fontSize: '12px', color: '#374151', padding: '8px 10px',
+        border: '1px solid #d1d5db', borderRadius: '6px', background: '#f9fafb',
+      });
+      var notifyInput = document.createElement('input');
+      notifyInput.type = 'checkbox';
+      notifyInput.id = 's4k-notify-me';
+      notifyInput.checked = state.notifySubmitter;
+      notifyInput.addEventListener('change', function () { state.notifySubmitter = notifyInput.checked; });
+      var bellSpan = el('span', '', '🔔');
+      css(bellSpan, { fontSize: '13px', lineHeight: '1' });
+      notifyChk.appendChild(notifyInput);
+      notifyChk.appendChild(bellSpan);
+      notifyChk.appendChild(document.createTextNode(' Notify me when status changes'));
+      wrap.appendChild(notifyChk);
+    }
+
     // Buttons
     var footer = el('div', '');
     css(footer, { display: 'flex', gap: '8px', marginTop: '4px' });
@@ -1083,6 +1198,8 @@
 
       state.formData = { category: category, description: description, priority: prioSelect.value };
       state.attachConsole = attachConsole;
+      var notifyMeEl = document.getElementById('s4k-notify-me');
+      if (notifyMeEl) state.notifySubmitter = notifyMeEl.checked;
       state.step = 'submitting';
       renderDrawer();
       submitSnap();
@@ -1138,9 +1255,13 @@
       viewportHeight: window.innerHeight,
       scrollX: window.scrollX,
       scrollY: window.scrollY,
-      knackUserId: state.knackUser && (state.knackUser.id || state.knackUser.email),
-      knackUserName: state.knackUser && state.knackUser.name,
-      knackRole: state.knackRole,
+      knackUserId: state.appSource !== 'react' ? (state.knackUser && (state.knackUser.id || state.knackUser.email)) : null,
+      knackUserName: state.appSource !== 'react' ? (state.knackUser && state.knackUser.name) : null,
+      knackUserEmail: state.appSource !== 'react' ? (state.knackUser && state.knackUser.email) : null,
+      knackRole: state.appSource !== 'react' ? state.knackRole : null,
+      knackRoleName: state.appSource !== 'react' ? state.knackRoleName : null,
+      userId: state.appSource === 'react' ? (state.reactUser && state.reactUser.userId) : null,
+      userEmail: state.appSource === 'react' ? (state.reactUser && state.reactUser.userEmail) : null,
     };
     var payload = {
       type: state.captureType || MODES.FULL,
@@ -1151,6 +1272,7 @@
       formData: state.formData || {},
       context: context,
       priority: (state.formData && state.formData.priority) || 'medium',
+      notifySubmitter: state.notifySubmitter !== false,
     };
     if (extraFields) {
       Object.keys(extraFields).forEach(function (k) { payload[k] = extraFields[k]; });
@@ -1292,6 +1414,17 @@
       mounted = true;
       var roles = getRoles(user);
       var knackRole = roles.length ? roles[0] : 'authenticated';
+      // Resolve human-readable role name from Knack app metadata
+      var knackRoleName = knackRole;
+      try {
+        var appRoles = (global.Knack.application && global.Knack.application.user_roles) ||
+                       (global.Knack.app && global.Knack.app.attributes && global.Knack.app.attributes.user_roles) ||
+                       (global.Knack.app && global.Knack.app.user_roles) || [];
+        for (var ri = 0; ri < appRoles.length; ri++) {
+          if (appRoles[ri].key === knackRole) { knackRoleName = appRoles[ri].name; break; }
+        }
+      } catch (e) {}
+      state.knackRoleName = knackRoleName;
       authenticate(user, knackRole);
     }
 
@@ -1305,7 +1438,7 @@
         if (user && user.id) {
           clearInterval(poll);
           var token = (typeof global.Knack.getUserToken === 'function') ? (global.Knack.getUserToken() || '') : '';
-          doMount({ id: user.id, name: user.name, email: user.email, roles: getRoles(user), token: token });
+          doMount({ id: user.id, name: user.name, email: user.email || user.identifier || '', roles: getRoles(user), token: token });
           return;
         }
       }
@@ -1316,7 +1449,7 @@
         var fetchUser = function () {
           global.Knack.getUser().then(function (user) {
             if (!user || !user.id) { setTimeout(fetchUser, 1000); return; }
-            doMount({ id: user.id, name: user.name || user.email, email: user.email || '', roles: getRoles(user), token: user.token || '' });
+            doMount({ id: user.id, name: user.name || user.email, email: user.email || user.identifier || '', roles: getRoles(user), token: user.token || '' });
           }).catch(function () { setTimeout(fetchUser, 2000); });
         };
         (typeof global.Knack.ready === 'function') ? global.Knack.ready().then(fetchUser) : fetchUser();
@@ -1353,8 +1486,68 @@
       });
   }
 
+  function authenticateReact(reactUser) {
+    state.reactUser = reactUser;
+    var userId = reactUser.userId || reactUser.userEmail || 'anonymous';
+    getWidgetToken(state.config.pluginId, state.config.tenantId, userId, 'authenticated')
+      .then(function (idToken) {
+        state.idToken = idToken;
+        state.idTokenAcquiredAt = Date.now();
+        return fetchPluginBranding(state.config.pluginId, state.config.tenantId, idToken);
+      })
+      .then(function () {
+        injectFAB();
+      })
+      .catch(function (e) {
+        console.warn('[Snap4Knack] React auth error:', e.message);
+      });
+  }
+
+  // ── Mount: React/Firebase apps ─────────────────────────────────────────────
+
+  // ── Teardown ───────────────────────────────────────────────────────────────
+
+  function teardown() {
+    var fab = document.getElementById('s4k-fab');
+    if (fab && fab.parentNode) fab.parentNode.removeChild(fab);
+    var drawer = document.getElementById('s4k-drawer');
+    if (drawer && drawer.parentNode) drawer.parentNode.removeChild(drawer);
+    var backdrop = document.getElementById('s4k-modal-backdrop');
+    if (backdrop && backdrop.parentNode) backdrop.parentNode.removeChild(backdrop);
+    state.open = false;
+    state.expanded = false;
+    state.idToken = null;
+    state.idTokenAcquiredAt = 0;
+    state.appSource = null;
+    state.reactUser = null;
+    state.config = null;
+    state.step = 'mode';
+    state.mode = null;
+  }
+
+  function mountReact(config) {
+    if (!config || !config.pluginId || !config.tenantId || !config.userId) {
+      console.warn('[Snap4Knack] mountReact() requires pluginId, tenantId, and userId');
+      return;
+    }
+    // Same user already mounted — skip to avoid double FAB / double auth
+    if (state.appSource === 'react' && state.reactUser && state.reactUser.userId === config.userId) {
+      return;
+    }
+    // Different user — tear down existing session first
+    if (state.appSource === 'react' && state.reactUser) {
+      teardown();
+    }
+    state.config = config;
+    state.appSource = 'react';
+    state.primaryColor = config.primaryColor || '#3b82f6';
+    state.position = config.position || 'bottom-right';
+    state.categories = config.categories || ['Bug', 'Feature Request', 'Question', 'Other'];
+    authenticateReact({ userId: config.userId, userEmail: config.userEmail || '' });
+  }
+
   // ── Export ─────────────────────────────────────────────────────────────────
 
-  global.Snap4Knack = { mount: mount };
+  global.Snap4Knack = { mount: mount, mountReact: mountReact, teardown: teardown };
 
 }(window));
