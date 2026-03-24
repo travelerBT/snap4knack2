@@ -18,6 +18,110 @@ export const ALL_TAGS = ['Release Notes', 'Product', 'Engineering', 'HIPAA'] as 
 
 export const blogPosts: BlogPost[] = [
   {
+    slug: 'react-app-support',
+    title: 'Snap4Knack Now Works in Any React App',
+    date: '2026-03-24',
+    tags: ['Release Notes', 'Product', 'Engineering'],
+    summary:
+      'Snap4Knack is no longer Knack-only. The widget can now be embedded in any React / Firebase application with a single code snippet — full snap capture, annotations, notifications, and HIPAA mode included.',
+    content: [
+      {
+        type: 'paragraph',
+        text: 'From the beginning, Snap4Knack was built for Knack apps. The widget polled for a logged-in Knack user, read their role, and decided whether to show the feedback button. That worked well — but it locked out every other kind of app. Today that changes.',
+      },
+      {
+        type: 'paragraph',
+        text: 'React / Firebase support is now live. If your app uses Firebase Authentication, you can embed the Snap4Knack widget in a single useEffect and have it working in minutes.',
+      },
+      { type: 'divider' },
+
+      { type: 'h2', text: '🚀 How It Works' },
+      {
+        type: 'paragraph',
+        text: 'The integration is a small snippet that you drop into any component that has access to Firebase Auth. It injects the widget loader once, listens for auth state changes, and handles the full lifecycle automatically.',
+      },
+      {
+        type: 'ul',
+        items: [
+          'The loader script is injected once — a data attribute guard prevents double-loading even if the component re-renders.',
+          'When Firebase Auth reports a logged-in user, the widget mounts and the FAB appears.',
+          'When the user logs out, the widget tears itself down — the FAB is removed from the DOM cleanly.',
+          'If the same user\'s token refreshes (which Firebase does silently every hour), the widget detects it\'s already mounted for that user and does nothing. No duplicate FABs, no re-authentication flicker.',
+          'If a different user logs in after a logout, the widget tears down the previous session and mounts fresh for the new user.',
+        ],
+      },
+      {
+        type: 'callout',
+        variant: 'info',
+        text: 'No Knack connection is required for React plugins. There is no role filtering — all authenticated Firebase users see the Snap button. A React plugin is created separately from Knack plugins in the Snap Plugins wizard.',
+      },
+
+      { type: 'divider' },
+
+      { type: 'h2', text: '📋 The Embed Snippet' },
+      {
+        type: 'paragraph',
+        text: 'The full snippet is generated for you in the plugin\'s Embed Code tab under "React / Firebase". It looks like this:',
+      },
+      {
+        type: 'ul',
+        items: [
+          'Inject the loader script once (guarded by data-snap4knack-loader attribute)',
+          'Subscribe to onAuthStateChanged',
+          'On login: poll until the loader is ready, then call initReact() with the user\'s UID and email',
+          'On logout: call window.Snap4Knack.teardown()',
+          'Return the Firebase unsubscribe function for clean component unmount',
+        ],
+      },
+
+      { type: 'divider' },
+
+      { type: 'h2', text: '🏷️ React Snaps in Your Feed' },
+      {
+        type: 'paragraph',
+        text: 'Snaps submitted from React apps are visually distinguished throughout the dashboard:',
+      },
+      {
+        type: 'ul',
+        items: [
+          'Kanban cards show a small indigo "React" badge alongside the existing HIPAA badge.',
+          'The snap detail sidebar shows an "App Source: React App" field in the Submission Info panel.',
+          'The "Submitted By" field is populated from the Firebase Auth user\'s email — no Knack user name needed.',
+          'The activity feed entry ("submitted snap") also uses the Firebase email as the actor name.',
+        ],
+      },
+
+      { type: 'divider' },
+
+      { type: 'h2', text: '⚙️ Under the Hood' },
+      {
+        type: 'ul',
+        items: [
+          'issueWidgetToken already had a React path (userId instead of knackUserId, role check skipped). It has been redeployed to confirm the live version is current.',
+          'submitSnap stores source: "react" on the Firestore document, which drives the badge logic.',
+          'A new teardown() function is exported on window.Snap4Knack — it removes the FAB, drawer, and modal backdrop, then resets auth state.',
+          'mountReact() gained an idempotency guard: same user → no-op; different user → teardown then re-mount.',
+        ],
+      },
+
+      { type: 'divider' },
+
+      { type: 'h2', text: 'What\'s Next' },
+      {
+        type: 'paragraph',
+        text: 'React support opens up a lot of possibilities. Near-term on the roadmap:',
+      },
+      {
+        type: 'ul',
+        items: [
+          'Optional role-based filtering for React apps (pass a userRole to initReact and configure allowed roles in the plugin)',
+          'Non-Firebase React support (bring-your-own user object, no Firebase Auth dependency)',
+          'Vue / Vanilla JS variants of the loader snippet',
+        ],
+      },
+    ],
+  },
+  {
     slug: 'release-notes-march-2026',
     title: 'Release Notes — March 2026',
     date: '2026-03-22',
