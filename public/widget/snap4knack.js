@@ -417,6 +417,7 @@
         background: '#fff',
         boxShadow: '0 24px 64px rgba(0,0,0,0.35)',
         zIndex: '2147483646',
+        pointerEvents: 'auto',
         display: 'flex',
         flexDirection: 'column',
         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
@@ -435,6 +436,7 @@
         background: '#fff',
         boxShadow: '-4px 0 20px rgba(0,0,0,0.15)',
         zIndex: '2147483646',
+        pointerEvents: 'auto',
         display: 'flex',
         flexDirection: 'column',
         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
@@ -520,21 +522,28 @@
 
     drawer.appendChild(body);
     document.body.appendChild(drawer);
-    // Knack's aria-hidden package sets aria-hidden/inert on all body children when
-    // a modal opens — including the drawer. Strip these immediately to preserve interactivity.
+    // Force pointer-events with !important to beat Knack CSS rules like
+    // `body.kn-dialog-open * { pointer-events: none }` that override default styles.
+    drawer.style.setProperty('pointer-events', 'auto', 'important');
     // DIAG: log when drawer receives pointerdown to confirm events reach it
     drawer.addEventListener('pointerdown', function(e) {
       console.log('[S4K] pointerdown REACHED drawer — target:', e.target && (e.target.id || (typeof e.target.className === 'string' && e.target.className) || e.target.tagName));
     }, true);
     var drawerObserver = new MutationObserver(function (mutations) {
       mutations.forEach(function(m) {
-        console.log('[S4K] drawer attr changed:', m.attributeName, '->', drawer.getAttribute(m.attributeName));
+        console.log('[S4K] drawer', m.attributeName, 'changed ->', m.attributeName === 'style' ? drawer.style.pointerEvents : drawer.getAttribute(m.attributeName));
       });
+      // Strip aria-hidden / inert
       if (drawer.getAttribute('aria-hidden')) drawer.removeAttribute('aria-hidden');
       if (drawer.getAttribute('data-aria-hidden')) drawer.removeAttribute('data-aria-hidden');
       if (drawer.hasAttribute('inert')) drawer.removeAttribute('inert');
+      // Re-force pointer-events in case Knack set it via JS on the style attribute
+      if (drawer.style.pointerEvents !== 'auto') {
+        drawer.style.setProperty('pointer-events', 'auto', 'important');
+        console.log('[S4K] re-forced pointer-events: auto on drawer');
+      }
     });
-    drawerObserver.observe(drawer, { attributes: true, attributeFilter: ['aria-hidden', 'data-aria-hidden', 'inert'] });
+    drawerObserver.observe(drawer, { attributes: true, attributeFilter: ['aria-hidden', 'data-aria-hidden', 'inert', 'style'] });
   }
 
   // ── Step: mode selection ───────────────────────────────────────────────────
