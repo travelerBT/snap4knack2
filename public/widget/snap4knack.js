@@ -383,6 +383,12 @@
         renderDrawer();
       });
       document.body.appendChild(backdrop);
+      var backdropObserver = new MutationObserver(function () {
+        if (backdrop.getAttribute('aria-hidden')) backdrop.removeAttribute('aria-hidden');
+        if (backdrop.getAttribute('data-aria-hidden')) backdrop.removeAttribute('data-aria-hidden');
+        if (backdrop.hasAttribute('inert')) backdrop.removeAttribute('inert');
+      });
+      backdropObserver.observe(backdrop, { attributes: true, attributeFilter: ['aria-hidden', 'data-aria-hidden', 'inert'] });
     }
 
     var drawer = el('div');
@@ -501,6 +507,14 @@
 
     drawer.appendChild(body);
     document.body.appendChild(drawer);
+    // Knack's aria-hidden package sets aria-hidden/inert on all body children when
+    // a modal opens — including the drawer. Strip these immediately to preserve interactivity.
+    var drawerObserver = new MutationObserver(function () {
+      if (drawer.getAttribute('aria-hidden')) drawer.removeAttribute('aria-hidden');
+      if (drawer.getAttribute('data-aria-hidden')) drawer.removeAttribute('data-aria-hidden');
+      if (drawer.hasAttribute('inert')) drawer.removeAttribute('inert');
+    });
+    drawerObserver.observe(drawer, { attributes: true, attributeFilter: ['aria-hidden', 'data-aria-hidden', 'inert'] });
   }
 
   // ── Step: mode selection ───────────────────────────────────────────────────
