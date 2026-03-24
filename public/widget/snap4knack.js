@@ -114,6 +114,41 @@
     for (var k in styles) el.style[k] = styles[k];
   }
 
+  // Append S4K elements to <html> rather than <body> so we escape any
+  // stacking context, overflow:hidden, or pointer-event trap that a Knack
+  // modal puts on document.body.
+  function getHost() {
+    return document.documentElement || document.body;
+  }
+
+  // Temporarily hide Knack's open modal overlay/backdrop so that html2canvas
+  // captures the underlying page instead of a dark scrim.
+  // Returns a restore function.  Safe to call when no modal is open.
+  function suppressKnackModal() {
+    var hidden = [];
+    // Knack modal selectors — covers both Knack v2 and v3
+    var selectors = [
+      '.kn-modal-bg',      // Knack v2 backdrop
+      '.kn-modal',         // Knack v2/v3 modal container
+      '.knack-modal-bg',   // alternate class
+      '[class*="modal-overlay"]',
+      '[id*="knack-modal"]',
+    ];
+    selectors.forEach(function (sel) {
+      try {
+        document.querySelectorAll(sel).forEach(function (node) {
+          if (node.style.display !== 'none' && node.style.visibility !== 'hidden') {
+            hidden.push({ node: node, vis: node.style.visibility });
+            node.style.visibility = 'hidden';
+          }
+        });
+      } catch (e) {}
+    });
+    return function restoreKnackModal() {
+      hidden.forEach(function (item) { item.node.style.visibility = item.vis; });
+    };
+  }
+
   function req(method, url, data, token) {
     return new Promise(function (resolve, reject) {
       // Only allow HTTPS to prevent token theft on mixed-content pages (M-07)
@@ -266,7 +301,7 @@
     fab.addEventListener('mouseenter', function(){ fab.style.transform='scale(1.1)'; });
     fab.addEventListener('mouseleave', function(){ fab.style.transform='scale(1)'; });
     fab.addEventListener('click', function () { toggleDrawer(); });
-    document.body.appendChild(fab);
+    getHost().appendChild(fab);
   }
 
   // ── Drawer ─────────────────────────────────────────────────────────────────
@@ -329,7 +364,7 @@
         state.expanded = false;
         renderDrawer();
       });
-      document.body.appendChild(backdrop);
+      getHost().appendChild(backdrop);
     }
 
     var drawer = el('div');
@@ -447,7 +482,7 @@
     else if (state.step === 'done') renderDoneStep(body);
 
     drawer.appendChild(body);
-    document.body.appendChild(drawer);
+    getHost().appendChild(drawer);
   }
 
   // ── Step: mode selection ───────────────────────────────────────────────────
@@ -539,6 +574,7 @@
 
   // Full viewport via html2canvas
   function captureFullViewport() {
+    var restoreModal = suppressKnackModal();
     loadHtml2Canvas(function (h2c) {
       h2c(document.body, {
         useCORS: true,
@@ -546,6 +582,7 @@
         scale: 1,
         logging: false,
       }).then(function (canvas) {
+        restoreModal();
         state.captureDataUrl = canvas.toDataURL('image/png');
         state.captureType = MODES.FULL;
         state.captureIsVideo = false;
@@ -553,6 +590,7 @@
         showDrawer();
         renderDrawer();
       }).catch(function (e) {
+        restoreModal();
         alert('Capture failed: ' + e.message);
         state.step = 'mode';
         showDrawer();
@@ -601,13 +639,15 @@
       }
       captureAreaRegion(x + window.scrollX, y + window.scrollY, w, h, x, y);
     });
-    document.body.appendChild(overlay);
+    getHost().appendChild(overlay);
   }
 
   function captureAreaRegion(scrollX, scrollY, w, h, clientX, clientY) {
+    var restoreModal = suppressKnackModal();
     loadHtml2Canvas(function (h2c) {
       h2c(document.body, { useCORS: true, allowTaint: true, scale: 1, logging: false })
         .then(function (canvas) {
+          restoreModal();
           var crop = document.createElement('canvas');
           crop.width = w; crop.height = h;
           crop.getContext('2d').drawImage(canvas, clientX, clientY, w, h, 0, 0, w, h);
@@ -618,6 +658,7 @@
           showDrawer();
           renderDrawer();
         }).catch(function (e) {
+          restoreModal();
           alert('Capture failed: ' + e.message);
           state.step = 'mode';
           showDrawer();
@@ -641,7 +682,7 @@
       background: 'rgba(0,0,0,0.8)', color: '#fff', padding: '6px 14px',
       borderRadius: '20px', fontSize: '13px', zIndex: '2147483602', pointerEvents: 'none',
     });
-    document.body.appendChild(tooltip);
+    getHost().appendChild(tooltip);
 
     var highlighted = null;
     overlay.addEventListener('mousemove', function (e) {
@@ -662,7 +703,7 @@
       var target = document.elementFromPoint(e.clientX, e.clientY);
       overlay.style.display = 'block';
       if (highlighted) highlighted.style.outline = '';
-      if (tooltip.parentNode) tooltip.remove();
+      if (tooltip && tooltip.parentNode) tooltip.remove();
       overlay.remove();
 
       if (!target) {
@@ -675,7 +716,7 @@
       captureElement(target);
     });
 
-    document.body.appendChild(overlay);
+    getHost().appendChild(overlay);
   }
 
   function captureElement(element) {
@@ -758,7 +799,7 @@
           borderRadius: '20px', fontSize: '13px', fontWeight: '600',
           zIndex: '2147483602', display: 'flex', alignItems: 'center',
         });
-        document.body.appendChild(recIndicator);
+        getHost().appendChild(recIndicator);
 
         var timeout = setTimeout(stopRecording, 30000);
         document.getElementById('s4k-stop-rec').addEventListener('click', function () {
