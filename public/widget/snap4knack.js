@@ -701,6 +701,7 @@
       captureAreaRegion(x + window.scrollX, y + window.scrollY, w, h, x, y);
     });
     document.body.appendChild(overlay);
+    overlay.style.setProperty('pointer-events', 'auto', 'important');
   }
 
   function captureAreaRegion(scrollX, scrollY, w, h, clientX, clientY) {
@@ -778,6 +779,7 @@
     });
 
     document.body.appendChild(overlay);
+    overlay.style.setProperty('pointer-events', 'auto', 'important');
   }
 
   function captureElement(element) {
