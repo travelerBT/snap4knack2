@@ -218,6 +218,39 @@ export function submitterStatusUpdateEmail(opts: {
   };
 }
 
+export function sharedFeedEmail(opts: {
+  recipientEmail: string;
+  ownerCompanyName: string;
+  pluginName: string;
+  feedUrl: string;
+}): { to: string; subject: string; html: string } {
+  const ownerCompanyName = escapeHtml(opts.ownerCompanyName);
+  const pluginName = escapeHtml(opts.pluginName);
+  return {
+    to: opts.recipientEmail,
+    subject: `[Snap4Knack] ${ownerCompanyName} shared a snap feed with you`,
+    html: `
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
+        <div style="background:#2563eb;padding:16px 24px;border-radius:8px 8px 0 0">
+          <h1 style="color:#fff;margin:0;font-size:20px">📋 A Snap Feed Has Been Shared With You</h1>
+        </div>
+        <div style="background:#f9fafb;padding:24px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px">
+          <p style="margin:0 0 12px;color:#374151">
+            <strong>${ownerCompanyName}</strong> has shared the snap feed <strong>${pluginName}</strong> with your Snap4Knack account.
+          </p>
+          <p style="margin:0 0 20px;color:#374151">Log in and click the <strong>Shared Feeds</strong> tab to view the submissions.</p>
+          <a href="${escapeHtml(opts.feedUrl)}" style="background:#2563eb;color:#fff;padding:10px 20px;border-radius:6px;text-decoration:none;font-weight:600;display:inline-block">
+            View Shared Feed →
+          </a>
+        </div>
+        <p style="margin-top:16px;font-size:12px;color:#9ca3af;text-align:center">
+          Snap4Knack · Fine Mountain LLC
+        </p>
+      </div>
+    `,
+  };
+}
+
 export function commentNotificationEmail(opts: {
   recipientEmail: string;
   authorName: string;

@@ -8,7 +8,7 @@ import { DlpServiceClient, protos as dlpProtos } from "@google-cloud/dlp";
 import sgMail from "@sendgrid/mail";
 import axios from "axios";
 import { randomUUID } from "crypto";
-import { snapNotificationEmail, criticalSnapEmail, clientInvitationEmail, commentNotificationEmail, submitterStatusUpdateEmail, newTenantWelcomeEmail } from "./emailTemplates";
+import { snapNotificationEmail, criticalSnapEmail, clientInvitationEmail, commentNotificationEmail, submitterStatusUpdateEmail, newTenantWelcomeEmail, sharedFeedEmail } from "./emailTemplates";
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -1160,6 +1160,25 @@ export const shareFeedWithTenant = functions.https.onCall(
     await db.collection("users").doc(granteeUid).update({
       sharedPluginAccess: admin.firestore.FieldValue.arrayUnion(pluginId),
     });
+
+    // Notify the grantee by email — non-fatal
+    try {
+      const key = await getSendGridKey();
+      if (key) {
+        sgMail.setApiKey(key);
+        await sgMail.send({
+          from: SENDGRID_FROM,
+          ...sharedFeedEmail({
+            recipientEmail: email,
+            ownerCompanyName,
+            pluginName,
+            feedUrl: `${APP_DOMAIN}/snap-feed`,
+          }),
+        });
+      }
+    } catch {
+      // Email failure is non-fatal — share was already granted
+    }
 
     return { shareId: shareRef.id, grantedEmail: email, grantedCompanyName, pluginName };
   }
