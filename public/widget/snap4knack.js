@@ -310,6 +310,19 @@
     // Knack typically only blocks 'click', not 'pointerdown'.
     window.addEventListener('pointerdown', function(e) {
       var f = document.getElementById('s4k-fab');
+      // DIAG: log top elements at click point
+      if (document.elementsFromPoint) {
+        var stack = document.elementsFromPoint(e.clientX, e.clientY);
+        console.log('[S4K] pointerdown stack:', stack.slice(0,6).map(function(el) {
+          var cs = window.getComputedStyle(el);
+          return (el.id ? '#'+el.id : (el.className && typeof el.className === 'string') ? '.'+el.className.trim().split(/\s+/)[0] : el.tagName) + ' z:' + cs.zIndex + ' pe:' + cs.pointerEvents;
+        }));
+      }
+      var dr = document.getElementById('s4k-drawer');
+      if (dr) {
+        var dcs = window.getComputedStyle(dr);
+        console.log('[S4K] drawer state — aria-hidden:', dr.getAttribute('aria-hidden'), '| inert-attr:', dr.hasAttribute('inert'), '| inert-prop:', dr.inert, '| pe:', dcs.pointerEvents, '| z:', dcs.zIndex, '| visibility:', dcs.visibility);
+      }
       if (!f) return;
       var rect = f.getBoundingClientRect();
       if (e.clientX >= rect.left && e.clientX <= rect.right &&
@@ -375,7 +388,7 @@
       backdrop.id = 's4k-modal-backdrop';
       css(backdrop, {
         position: 'fixed', top: '0', left: '0', width: '100%', height: '100%',
-        background: 'rgba(0,0,0,0.55)', zIndex: '2147483600',
+        background: 'rgba(0,0,0,0.55)', zIndex: '2147483645',
         transition: 'opacity 0.2s ease',
       });
       backdrop.addEventListener('click', function () {
@@ -403,7 +416,7 @@
         height: 'min(90vh, 860px)',
         background: '#fff',
         boxShadow: '0 24px 64px rgba(0,0,0,0.35)',
-        zIndex: '2147483601',
+        zIndex: '2147483646',
         display: 'flex',
         flexDirection: 'column',
         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
@@ -421,7 +434,7 @@
         height: '100%',
         background: '#fff',
         boxShadow: '-4px 0 20px rgba(0,0,0,0.15)',
-        zIndex: '2147483601',
+        zIndex: '2147483646',
         display: 'flex',
         flexDirection: 'column',
         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
@@ -509,7 +522,14 @@
     document.body.appendChild(drawer);
     // Knack's aria-hidden package sets aria-hidden/inert on all body children when
     // a modal opens — including the drawer. Strip these immediately to preserve interactivity.
-    var drawerObserver = new MutationObserver(function () {
+    // DIAG: log when drawer receives pointerdown to confirm events reach it
+    drawer.addEventListener('pointerdown', function(e) {
+      console.log('[S4K] pointerdown REACHED drawer — target:', e.target && (e.target.id || (typeof e.target.className === 'string' && e.target.className) || e.target.tagName));
+    }, true);
+    var drawerObserver = new MutationObserver(function (mutations) {
+      mutations.forEach(function(m) {
+        console.log('[S4K] drawer attr changed:', m.attributeName, '->', drawer.getAttribute(m.attributeName));
+      });
       if (drawer.getAttribute('aria-hidden')) drawer.removeAttribute('aria-hidden');
       if (drawer.getAttribute('data-aria-hidden')) drawer.removeAttribute('data-aria-hidden');
       if (drawer.hasAttribute('inert')) drawer.removeAttribute('inert');
