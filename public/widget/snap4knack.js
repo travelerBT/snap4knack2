@@ -295,6 +295,16 @@
     fab.addEventListener('mouseenter', function(){ fab.style.transform='scale(1.1)'; });
     fab.addEventListener('mouseleave', function(){ fab.style.transform='scale(1)'; });
     document.body.appendChild(fab);
+    // MutationObserver: Knack's modal uses the aria-hidden package which sets
+    // aria-hidden="true" and data-aria-hidden="true" on all background elements.
+    // Some browsers/polyfills treat aria-hidden as inert and block pointer events.
+    // Watch the FAB and strip these attributes immediately when Knack adds them.
+    var fabObserver = new MutationObserver(function () {
+      if (fab.getAttribute('aria-hidden')) fab.removeAttribute('aria-hidden');
+      if (fab.getAttribute('data-aria-hidden')) fab.removeAttribute('data-aria-hidden');
+      if (fab.hasAttribute('inert')) fab.removeAttribute('inert');
+    });
+    fabObserver.observe(fab, { attributes: true, attributeFilter: ['aria-hidden', 'data-aria-hidden', 'inert'] });
     // Use pointerdown + bounding rect so we fire before Knack's click
     // interceptor and before any pointer-event trap on the overlay.
     // Knack typically only blocks 'click', not 'pointerdown'.
