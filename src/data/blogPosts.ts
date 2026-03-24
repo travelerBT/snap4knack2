@@ -18,6 +18,90 @@ export const ALL_TAGS = ['Release Notes', 'Product', 'Engineering', 'HIPAA'] as 
 
 export const blogPosts: BlogPost[] = [
   {
+    slug: 'knack-modal-widget-fix',
+    title: 'Widget Now Works Inside Knack Modals',
+    date: '2026-03-24',
+    tags: ['Release Notes', 'Engineering'],
+    summary:
+      'The Snap4Knack widget FAB, drawer, and all capture modes now work correctly when a Knack modal dialog is open — a multi-layer fix for pointer-event blocking, aria-hidden injection, and stale build artifacts.',
+    content: [
+      {
+        type: 'paragraph',
+        text: 'Several customers reported that the Snap4Knack widget would not open — or would open but be completely unclickable — when a Knack modal dialog was on screen. This release fixes that end-to-end.',
+      },
+      { type: 'divider' },
+
+      { type: 'h2', text: '🐛 What Was Happening' },
+      {
+        type: 'paragraph',
+        text: 'Knack\'s modal system applies three independent mechanisms that together made the widget unreachable:',
+      },
+      {
+        type: 'ol',
+        items: [
+          'aria-hidden injection — Knack uses the aria-hidden npm package to stamp aria-hidden="true" and data-aria-hidden="true" on every element in the background when a modal opens. Some browsers and polyfills treat aria-hidden as an interaction barrier.',
+          'CSS pointer-events: none — Knack applies a stylesheet rule that sets pointer-events: none on all direct children of <body> while a dialog is open. This silently blocked every click on the FAB, the drawer panel, the area-selection overlay, and the recording Stop button.',
+          'Stale dist/ — Firebase Hosting serves from the dist/ folder, which is only updated by running npm run build. Previous fix attempts were deployed without a build step, so the live site was serving months-old code regardless of what was committed.',
+        ],
+      },
+      { type: 'divider' },
+
+      { type: 'h2', text: '✅ The Fix' },
+      {
+        type: 'h3',
+        text: 'MutationObserver on every widget element',
+      },
+      {
+        type: 'paragraph',
+        text: 'A MutationObserver is attached to each element after it is appended to document.body. It watches for aria-hidden, data-aria-hidden, and inert attribute changes and strips them immediately whenever Knack adds them.',
+      },
+      {
+        type: 'h3',
+        text: 'pointer-events: auto !important via setProperty',
+      },
+      {
+        type: 'paragraph',
+        text: 'After every document.body.appendChild call, the widget now immediately calls element.style.setProperty(\'pointer-events\', \'auto\', \'important\'). The !important priority overrides the Knack stylesheet rule. This was applied to all five appendages: the FAB, the drawer panel, the area-select overlay, the pin-element overlay, and the recording indicator.',
+      },
+      {
+        type: 'h3',
+        text: 'Z-index stack corrected',
+      },
+      {
+        type: 'paragraph',
+        text: 'Element z-indices were reorganised so the drawer (2147483646) and FAB (2147483647) sit above the Knack dialog overlay (z-index: 50), while remaining below 2147483647 — the browser maximum — for the FAB only.',
+      },
+      {
+        type: 'h3',
+        text: 'Build pipeline enforced',
+      },
+      {
+        type: 'paragraph',
+        text: 'The root cause of prior failed deploys was confirmed: dist/ was stale because npm run build was never run before firebase deploy --only hosting. All subsequent deployments now run the build step first.',
+      },
+      { type: 'divider' },
+
+      { type: 'h2', text: '🔧 Elements Fixed' },
+      {
+        type: 'ul',
+        items: [
+          'FAB (feedback button) — clicking now opens the drawer even when a Knack modal is open',
+          'Drawer panel — all buttons (Full Page, Select Area, Pin Element, Record Screen, close, expand) are now fully interactive',
+          'Area-select overlay — crosshair drag-to-select works correctly',
+          'Pin-element overlay — click-to-pin works correctly',
+          'Recording indicator — Stop button responds to clicks during an active recording session',
+        ],
+      },
+      { type: 'divider' },
+
+      {
+        type: 'callout',
+        variant: 'success',
+        text: 'No configuration changes are required. The fix is bundled in the widget script automatically loaded by your Knack page. Hard-refresh your Knack app to pick up the latest version.',
+      },
+    ],
+  },
+  {
     slug: 'react-app-support',
     title: 'Snap4Knack Now Works in Any React App',
     date: '2026-03-24',
