@@ -114,13 +114,6 @@
     for (var k in styles) el.style[k] = styles[k];
   }
 
-  // Append S4K elements to <html> rather than <body> so we escape any
-  // stacking context, overflow:hidden, or pointer-event trap that a Knack
-  // modal puts on document.body.
-  function getHost() {
-    return document.documentElement || document.body;
-  }
-
   // Temporarily hide Knack's open modal overlay/backdrop so that html2canvas
   // captures the underlying page instead of a dark scrim.
   // Returns a restore function.  Safe to call when no modal is open.
@@ -291,7 +284,7 @@
       color: '#fff',
       cursor: 'pointer',
       boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-      zIndex: '2147483600',
+      zIndex: '2147483647',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
@@ -300,8 +293,17 @@
     fab.title = 'Snap Feedback';
     fab.addEventListener('mouseenter', function(){ fab.style.transform='scale(1.1)'; });
     fab.addEventListener('mouseleave', function(){ fab.style.transform='scale(1)'; });
-    fab.addEventListener('click', function () { toggleDrawer(); });
-    getHost().appendChild(fab);
+    document.body.appendChild(fab);
+    // Register at window capture phase so our handler fires before any Knack
+    // modal overlay listener can intercept the click, regardless of z-index.
+    window.addEventListener('click', function(e) {
+      var f = document.getElementById('s4k-fab');
+      if (f && (e.target === f || f.contains(e.target))) {
+        e.stopImmediatePropagation();
+        e.stopPropagation();
+        toggleDrawer();
+      }
+    }, true);
   }
 
   // ── Drawer ─────────────────────────────────────────────────────────────────
@@ -364,7 +366,7 @@
         state.expanded = false;
         renderDrawer();
       });
-      getHost().appendChild(backdrop);
+      document.body.appendChild(backdrop);
     }
 
     var drawer = el('div');
@@ -482,7 +484,7 @@
     else if (state.step === 'done') renderDoneStep(body);
 
     drawer.appendChild(body);
-    getHost().appendChild(drawer);
+    document.body.appendChild(drawer);
   }
 
   // ── Step: mode selection ───────────────────────────────────────────────────
@@ -639,7 +641,7 @@
       }
       captureAreaRegion(x + window.scrollX, y + window.scrollY, w, h, x, y);
     });
-    getHost().appendChild(overlay);
+    document.body.appendChild(overlay);
   }
 
   function captureAreaRegion(scrollX, scrollY, w, h, clientX, clientY) {
@@ -682,7 +684,7 @@
       background: 'rgba(0,0,0,0.8)', color: '#fff', padding: '6px 14px',
       borderRadius: '20px', fontSize: '13px', zIndex: '2147483602', pointerEvents: 'none',
     });
-    getHost().appendChild(tooltip);
+    document.body.appendChild(tooltip);
 
     var highlighted = null;
     overlay.addEventListener('mousemove', function (e) {
@@ -716,7 +718,7 @@
       captureElement(target);
     });
 
-    getHost().appendChild(overlay);
+    document.body.appendChild(overlay);
   }
 
   function captureElement(element) {
@@ -799,7 +801,7 @@
           borderRadius: '20px', fontSize: '13px', fontWeight: '600',
           zIndex: '2147483602', display: 'flex', alignItems: 'center',
         });
-        getHost().appendChild(recIndicator);
+        document.body.appendChild(recIndicator);
 
         var timeout = setTimeout(stopRecording, 30000);
         document.getElementById('s4k-stop-rec').addEventListener('click', function () {
