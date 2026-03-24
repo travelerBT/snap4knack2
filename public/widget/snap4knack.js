@@ -863,6 +863,7 @@
           zIndex: '2147483602', display: 'flex', alignItems: 'center',
         });
         document.body.appendChild(recIndicator);
+        recIndicator.style.setProperty('pointer-events', 'auto', 'important');
 
         var timeout = setTimeout(stopRecording, 30000);
         document.getElementById('s4k-stop-rec').addEventListener('click', function () {
