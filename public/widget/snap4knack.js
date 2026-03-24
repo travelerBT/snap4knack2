@@ -285,6 +285,7 @@
       cursor: 'pointer',
       boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
       zIndex: '2147483647',
+      pointerEvents: 'auto',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
@@ -294,13 +295,18 @@
     fab.addEventListener('mouseenter', function(){ fab.style.transform='scale(1.1)'; });
     fab.addEventListener('mouseleave', function(){ fab.style.transform='scale(1)'; });
     document.body.appendChild(fab);
-    // Register at window capture phase so our handler fires before any Knack
-    // modal overlay listener can intercept the click, regardless of z-index.
-    window.addEventListener('click', function(e) {
+    // Use pointerdown + bounding rect so we fire before Knack's click
+    // interceptor and before any pointer-event trap on the overlay.
+    // Knack typically only blocks 'click', not 'pointerdown'.
+    window.addEventListener('pointerdown', function(e) {
       var f = document.getElementById('s4k-fab');
-      if (f && (e.target === f || f.contains(e.target))) {
+      if (!f) return;
+      var rect = f.getBoundingClientRect();
+      if (e.clientX >= rect.left && e.clientX <= rect.right &&
+          e.clientY >= rect.top  && e.clientY <= rect.bottom) {
         e.stopImmediatePropagation();
         e.stopPropagation();
+        e.preventDefault();
         toggleDrawer();
       }
     }, true);
