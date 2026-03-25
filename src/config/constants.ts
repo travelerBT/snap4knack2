@@ -36,6 +36,7 @@ export const PRIORITY_OPTIONS = [
 ] as const;
 
 export const STATUS_OPTIONS = [
+  { value: 'backlog', label: 'Backlog', color: 'text-slate-700 bg-slate-100' },
   { value: 'new', label: 'New', color: 'text-blue-800 bg-blue-100' },
   { value: 'in_progress', label: 'In Progress', color: 'text-yellow-800 bg-yellow-100' },
   { value: 'ready_for_testing', label: 'Ready for Testing', color: 'text-purple-800 bg-purple-100' },
