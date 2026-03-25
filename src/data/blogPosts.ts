@@ -81,6 +81,20 @@ export const blogPosts: BlogPost[] = [
       },
       { type: 'divider' },
 
+      { type: 'h2', text: '📌 Snap Feed View Preference Now Sticks' },
+      {
+        type: 'paragraph',
+        text: 'Switching between List and Kanban view on the Snap Feed now persists across navigation. Previously, leaving the feed and returning would reset it back to Kanban. The selected view is now saved in the browser and restored automatically the next time you visit — including across page refreshes and new sessions.',
+      },
+      {
+        type: 'ul',
+        items: [
+          'Applies to both "My Feed" and "Shared Feeds" tabs.',
+          'Stored per-browser, so each team member\'s preference is independent.',
+        ],
+      },
+      { type: 'divider' },
+
       {
         type: 'callout',
         variant: 'success',
