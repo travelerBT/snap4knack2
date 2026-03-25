@@ -63,7 +63,9 @@ export default function SnapFeed() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
-  const [view, setView] = useState<'list' | 'kanban'>('kanban');
+  const [view, setView] = useState<'list' | 'kanban'>(
+    () => (localStorage.getItem('s4k_feed_view') as 'list' | 'kanban') || 'kanban'
+  );
 
   // Filters
   const [search, setSearch] = useState('');
@@ -217,14 +219,14 @@ export default function SnapFeed() {
               {/* View toggle */}
               <div className="flex rounded-lg border border-gray-200 overflow-hidden">
                 <button
-                  onClick={() => setView('list')}
+                  onClick={() => { setView('list'); localStorage.setItem('s4k_feed_view', 'list'); }}
                   className={`p-1.5 ${ view === 'list' ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
                   title="List view"
                 >
                   <ListBulletIcon className="h-5 w-5" />
                 </button>
                 <button
-                  onClick={() => setView('kanban')}
+                  onClick={() => { setView('kanban'); localStorage.setItem('s4k_feed_view', 'kanban'); }}
                   className={`p-1.5 ${ view === 'kanban' ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
                   title="Kanban view"
                 >
@@ -394,7 +396,9 @@ function SharedFeed() {
   const [shares, setShares] = useState<TenantShare[]>([]);
   const [liveItems, setLiveItems] = useState<SnapSubmission[]>([]);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<'list' | 'kanban'>('kanban');
+  const [view, setView] = useState<'list' | 'kanban'>(
+    () => (localStorage.getItem('s4k_feed_view') as 'list' | 'kanban') || 'kanban'
+  );
 
   const [search, setSearch] = useState('');
   const [pluginFilter, setPluginFilter] = useState('');
@@ -543,14 +547,14 @@ function SharedFeed() {
         <p className="text-sm text-gray-500">{filtered.length} submission{filtered.length !== 1 ? 's' : ''}</p>
         <div className="flex rounded-lg border border-gray-200 overflow-hidden mt-2 sm:mt-0">
           <button
-            onClick={() => setView('list')}
+            onClick={() => { setView('list'); localStorage.setItem('s4k_feed_view', 'list'); }}
             className={`p-1.5 ${view === 'list' ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
             title="List view"
           >
             <ListBulletIcon className="h-5 w-5" />
           </button>
           <button
-            onClick={() => setView('kanban')}
+            onClick={() => { setView('kanban'); localStorage.setItem('s4k_feed_view', 'kanban'); }}
             className={`p-1.5 ${view === 'kanban' ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
             title="Kanban view"
           >
