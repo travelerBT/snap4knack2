@@ -313,19 +313,6 @@
     // Knack typically only blocks 'click', not 'pointerdown'.
     window.addEventListener('pointerdown', function(e) {
       var f = document.getElementById('s4k-fab');
-      // DIAG: log top elements at click point
-      if (document.elementsFromPoint) {
-        var stack = document.elementsFromPoint(e.clientX, e.clientY);
-        console.log('[S4K] pointerdown stack:', stack.slice(0,6).map(function(el) {
-          var cs = window.getComputedStyle(el);
-          return (el.id ? '#'+el.id : (el.className && typeof el.className === 'string') ? '.'+el.className.trim().split(/\s+/)[0] : el.tagName) + ' z:' + cs.zIndex + ' pe:' + cs.pointerEvents;
-        }));
-      }
-      var dr = document.getElementById('s4k-drawer');
-      if (dr) {
-        var dcs = window.getComputedStyle(dr);
-        console.log('[S4K] drawer state — aria-hidden:', dr.getAttribute('aria-hidden'), '| inert-attr:', dr.hasAttribute('inert'), '| inert-prop:', dr.inert, '| pe:', dcs.pointerEvents, '| z:', dcs.zIndex, '| visibility:', dcs.visibility);
-      }
       if (!f) return;
       var rect = f.getBoundingClientRect();
       if (e.clientX >= rect.left && e.clientX <= rect.right &&
@@ -528,14 +515,7 @@
     // Force pointer-events with !important to beat Knack CSS rules like
     // `body.kn-dialog-open * { pointer-events: none }` that override default styles.
     drawer.style.setProperty('pointer-events', 'auto', 'important');
-    // DIAG: log when drawer receives pointerdown to confirm events reach it
-    drawer.addEventListener('pointerdown', function(e) {
-      console.log('[S4K] pointerdown REACHED drawer — target:', e.target && (e.target.id || (typeof e.target.className === 'string' && e.target.className) || e.target.tagName));
-    }, true);
-    var drawerObserver = new MutationObserver(function (mutations) {
-      mutations.forEach(function(m) {
-        console.log('[S4K] drawer', m.attributeName, 'changed ->', m.attributeName === 'style' ? drawer.style.pointerEvents : drawer.getAttribute(m.attributeName));
-      });
+    var drawerObserver = new MutationObserver(function () {
       // Strip aria-hidden / inert
       if (drawer.getAttribute('aria-hidden')) drawer.removeAttribute('aria-hidden');
       if (drawer.getAttribute('data-aria-hidden')) drawer.removeAttribute('data-aria-hidden');
@@ -543,7 +523,6 @@
       // Re-force pointer-events in case Knack set it via JS on the style attribute
       if (drawer.style.pointerEvents !== 'auto') {
         drawer.style.setProperty('pointer-events', 'auto', 'important');
-        console.log('[S4K] re-forced pointer-events: auto on drawer');
       }
     });
     drawerObserver.observe(drawer, { attributes: true, attributeFilter: ['aria-hidden', 'data-aria-hidden', 'inert', 'style'] });

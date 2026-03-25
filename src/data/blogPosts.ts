@@ -18,6 +18,77 @@ export const ALL_TAGS = ['Release Notes', 'Product', 'Engineering', 'HIPAA'] as 
 
 export const blogPosts: BlogPost[] = [
   {
+    slug: 'mic-voiceover-screen-recording',
+    title: 'Screen Recording Now Supports Microphone Voiceover',
+    date: '2026-03-25',
+    tags: ['Release Notes', 'Product', 'Engineering'],
+    summary:
+      'You can now narrate while you record. The screen recording capture mode has been updated with an optional microphone input, a device selector for users with multiple mics, and a 60-second recording cap.',
+    content: [
+      {
+        type: 'paragraph',
+        text: 'Screen recordings are a powerful way to report a bug or walk through an unexpected workflow. Until now, they were silent — you had to describe the issue separately in the form. Starting today, you can talk through what you\'re seeing as you record.',
+      },
+      { type: 'divider' },
+
+      { type: 'h2', text: '🎙️ Microphone Voiceover' },
+      {
+        type: 'paragraph',
+        text: 'A new "🎙️ Include microphone" checkbox appears below the Record Screen button in the capture mode selector. When checked:',
+      },
+      {
+        type: 'ol',
+        items: [
+          'The browser prompts for microphone permission (one-time, per browser).',
+          'A device dropdown appears if more than one audio input is detected — headsets, built-in mics, and USB devices are all listed by name.',
+          'Your chosen microphone\'s audio track is combined with the screen capture and recorded together into a single WebM file.',
+          'If microphone permission is denied, recording continues silently — no interruption, no error message.',
+        ],
+      },
+      {
+        type: 'callout',
+        variant: 'info',
+        text: 'Microphone voiceover is disabled automatically for HIPAA-enabled plugins — the entire screen recording mode is hidden in HIPAA mode, as it has always been.',
+      },
+      { type: 'divider' },
+
+      { type: 'h2', text: '🎛️ Microphone Device Selector' },
+      {
+        type: 'paragraph',
+        text: 'Users with multiple audio inputs (e.g. a built-in Mac microphone and a USB headset) now see a dropdown to select which device to use. The browser\'s media permission prompt is used once to enumerate device names; after that the dropdown renders instantly on subsequent uses within the same page session.',
+      },
+      {
+        type: 'ul',
+        items: [
+          'Devices are listed by their system name (e.g. "Bose QC35 II" or "MacBook Pro Microphone").',
+          'A "Default microphone" option at the top lets the OS decide, matching browser auto-select behaviour.',
+          'The selected device is remembered within the session so you don\'t have to re-pick on every snap.',
+        ],
+      },
+      { type: 'divider' },
+
+      { type: 'h2', text: '⏱️ 60-Second Recording Cap' },
+      {
+        type: 'paragraph',
+        text: 'The maximum recording duration has been extended from 30 seconds to 60 seconds. The Stop button and the auto-stop timer both respect the new limit. For most bug reports and walkthroughs, 60 seconds is more than enough — and keeps uploaded file sizes reasonable.',
+      },
+      { type: 'divider' },
+
+      { type: 'h2', text: '🧹 Widget Console Cleanup' },
+      {
+        type: 'paragraph',
+        text: 'Several diagnostic console.log statements left over from the Knack modal compatibility work have been removed from the widget. The widget now only emits console.warn messages for genuine error conditions (e.g. auth timeout, API key not found). This keeps your browser DevTools clean in production.',
+      },
+      { type: 'divider' },
+
+      {
+        type: 'callout',
+        variant: 'success',
+        text: 'No configuration changes required. All users with screen recording enabled will see the mic checkbox immediately after a hard refresh. HIPAA plugins are unaffected.',
+      },
+    ],
+  },
+  {
     slug: 'knack-modal-widget-fix',
     title: 'Widget Now Works Inside Knack Modals',
     date: '2026-03-24',
