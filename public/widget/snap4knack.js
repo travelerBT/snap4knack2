@@ -58,6 +58,8 @@
     hipaaEnabled: false,
     allowRecording: false,
     micEnabled: false,
+    micDevices: [],
+    micDeviceId: 'default',
     appSource: null,  // 'knack' | 'react'
     reactUser: null,  // { userId, userEmail }
     notifySubmitter: true, // submitter's preference, set in form step
@@ -606,19 +608,74 @@
 
     // Mic toggle — only shown when screen recording is available
     if (state.allowRecording && !state.hipaaEnabled) {
+      var micSection = document.createElement('div');
+      css(micSection, { padding: '2px 4px 10px 4px' });
+
       var micRow = document.createElement('label');
-      css(micRow, { display: 'flex', alignItems: 'center', gap: '7px', padding: '2px 4px 10px 4px', cursor: 'pointer' });
+      css(micRow, { display: 'flex', alignItems: 'center', gap: '7px', cursor: 'pointer' });
       var micCheck = document.createElement('input');
       micCheck.type = 'checkbox';
       micCheck.checked = state.micEnabled;
       micCheck.style.cssText = 'cursor:pointer;width:14px;height:14px;flex-shrink:0';
-      micCheck.addEventListener('change', function () { state.micEnabled = micCheck.checked; });
       var micLbl = document.createElement('span');
       micLbl.style.cssText = 'font-size:12px;color:#6b7280;user-select:none';
       micLbl.textContent = '\uD83C\uDF99\uFE0F Include microphone';
       micRow.appendChild(micCheck);
       micRow.appendChild(micLbl);
-      wrap.appendChild(micRow);
+      micSection.appendChild(micRow);
+
+      // Device dropdown — shown when enabled and we have more than one device
+      if (state.micEnabled && state.micDevices.length > 1) {
+        var micSelect = document.createElement('select');
+        css(micSelect, {
+          marginTop: '6px', width: '100%', fontSize: '12px',
+          borderRadius: '6px', border: '1px solid #d1d5db',
+          padding: '4px 6px', color: '#374151', background: '#fff', cursor: 'pointer',
+        });
+        var defOpt = document.createElement('option');
+        defOpt.value = 'default';
+        defOpt.textContent = 'Default microphone';
+        micSelect.appendChild(defOpt);
+        state.micDevices.forEach(function (d, i) {
+          var opt = document.createElement('option');
+          opt.value = d.deviceId;
+          opt.textContent = d.label || ('Microphone ' + (i + 1));
+          micSelect.appendChild(opt);
+        });
+        micSelect.value = state.micDeviceId;
+        micSelect.addEventListener('change', function () { state.micDeviceId = micSelect.value; });
+        micSection.appendChild(micSelect);
+      }
+
+      micCheck.addEventListener('change', function () {
+        state.micEnabled = micCheck.checked;
+        if (state.micEnabled) {
+          if (state.micDevices.length === 0 && navigator.mediaDevices) {
+            // First enable — request permission so enumerateDevices returns labels
+            navigator.mediaDevices.getUserMedia({ audio: true })
+              .then(function (tempStream) {
+                tempStream.getTracks().forEach(function (t) { t.stop(); });
+                return navigator.mediaDevices.enumerateDevices();
+              })
+              .then(function (devices) {
+                state.micDevices = devices.filter(function (d) { return d.kind === 'audioinput'; });
+                if (state.step === 'mode') renderDrawer();
+              })
+              .catch(function () {
+                // Mic unavailable or denied
+                state.micEnabled = false;
+                if (state.step === 'mode') renderDrawer();
+              });
+          } else {
+            // Already have device list — just re-render to show dropdown
+            if (state.step === 'mode') renderDrawer();
+          }
+        } else {
+          if (state.step === 'mode') renderDrawer();
+        }
+      });
+
+      wrap.appendChild(micSection);
     }
 
     container.appendChild(wrap);
@@ -894,7 +951,10 @@
       })
       .then(function (displayStream) {
         if (state.micEnabled && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
-          navigator.mediaDevices.getUserMedia({ audio: true })
+          var micConstraint = (state.micDeviceId && state.micDeviceId !== 'default')
+            ? { audio: { deviceId: { exact: state.micDeviceId } } }
+            : { audio: true };
+          navigator.mediaDevices.getUserMedia(micConstraint)
             .then(function (micStream) {
               var combined = new MediaStream([
                 displayStream.getVideoTracks()[0],
@@ -903,7 +963,7 @@
               startRecordingWithStream(combined, [displayStream, micStream]);
             })
             .catch(function () {
-              // Mic denied — fall back to display stream only
+              // Mic denied or device unavailable — fall back to display stream only
               startRecordingWithStream(displayStream, [displayStream]);
             });
         } else {
