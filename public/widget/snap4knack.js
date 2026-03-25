@@ -57,6 +57,7 @@
     categories: ['Bug', 'Feature Request', 'Question', 'Other'],
     hipaaEnabled: false,
     allowRecording: false,
+    micEnabled: false,
     appSource: null,  // 'knack' | 'react'
     reactUser: null,  // { userId, userEmail }
     notifySubmitter: true, // submitter's preference, set in form step
@@ -568,7 +569,7 @@
       { id: MODES.PIN,       icon: SVG_PIN,     label: 'Pin Element',    desc: 'Click on a specific element' },
     ];
     if (state.allowRecording && !state.hipaaEnabled) {
-      modes.push({ id: MODES.RECORDING, icon: SVG_RECORD, label: 'Record Screen', desc: 'Record up to 30 seconds' });
+      modes.push({ id: MODES.RECORDING, icon: SVG_RECORD, label: 'Record Screen', desc: 'Record up to 60 seconds' });
     }
 
     modes.forEach(function (m) {
@@ -602,6 +603,24 @@
       btn.addEventListener('click', function () { startCapture(m.id); });
       wrap.appendChild(btn);
     });
+
+    // Mic toggle — only shown when screen recording is available
+    if (state.allowRecording && !state.hipaaEnabled) {
+      var micRow = document.createElement('label');
+      css(micRow, { display: 'flex', alignItems: 'center', gap: '7px', padding: '2px 4px 10px 4px', cursor: 'pointer' });
+      var micCheck = document.createElement('input');
+      micCheck.type = 'checkbox';
+      micCheck.checked = state.micEnabled;
+      micCheck.style.cssText = 'cursor:pointer;width:14px;height:14px;flex-shrink:0';
+      micCheck.addEventListener('change', function () { state.micEnabled = micCheck.checked; });
+      var micLbl = document.createElement('span');
+      micLbl.style.cssText = 'font-size:12px;color:#6b7280;user-select:none';
+      micLbl.textContent = '\uD83C\uDF99\uFE0F Include microphone';
+      micRow.appendChild(micCheck);
+      micRow.appendChild(micLbl);
+      wrap.appendChild(micRow);
+    }
+
     container.appendChild(wrap);
   }
 
@@ -801,6 +820,61 @@
   }
 
   // Screen recording
+  function startRecordingWithStream(recStream, allStreams) {
+    var mimeType = 'video/webm;codecs=vp8,opus';
+    if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm;codecs=vp8';
+    if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm';
+    if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = '';
+
+    var chunks = [];
+    var mr = new MediaRecorder(recStream, mimeType ? { mimeType: mimeType } : undefined);
+    state.mediaRecorder = mr;
+    state.recordingChunks = chunks;
+    state.recording = true;
+
+    mr.ondataavailable = function (e) { if (e.data && e.data.size) chunks.push(e.data); };
+    mr.onstop = function () {
+      allStreams.forEach(function (s) { s.getTracks().forEach(function (t) { t.stop(); }); });
+      state.recording = false;
+      var blob = new Blob(chunks, { type: mr.mimeType || 'video/webm' });
+      state.captureBlob = blob;
+      state.captureDataUrl = null;
+      state.captureType = MODES.RECORDING;
+      state.captureIsVideo = true;
+      state.step = 'form';
+      var ind = document.getElementById('s4k-rec-indicator');
+      if (ind) ind.remove();
+      showDrawer();
+      renderDrawer();
+    };
+
+    // If user stops sharing via browser UI, stop the recorder too
+    var videoTrack = recStream.getVideoTracks()[0];
+    if (videoTrack) videoTrack.addEventListener('ended', function () { stopRecording(); });
+
+    mr.start(500);
+
+    // Recording indicator
+    var recIndicator = el('div', '', '● Recording... <button id="s4k-stop-rec" style="margin-left:12px;padding:4px 10px;background:#fff;color:#dc2626;border:none;border-radius:4px;cursor:pointer;font-size:12px;font-weight:600">Stop</button>');
+    recIndicator.id = 's4k-rec-indicator';
+    css(recIndicator, {
+      position: 'fixed', bottom: '80px',
+      right: state.position === 'bottom-right' ? '20px' : 'auto',
+      left: state.position === 'bottom-left' ? '20px' : 'auto',
+      background: '#dc2626', color: '#fff', padding: '8px 14px',
+      borderRadius: '20px', fontSize: '13px', fontWeight: '600',
+      zIndex: '2147483602', display: 'flex', alignItems: 'center',
+    });
+    document.body.appendChild(recIndicator);
+    recIndicator.style.setProperty('pointer-events', 'auto', 'important');
+
+    var timeout = setTimeout(stopRecording, 60000);
+    document.getElementById('s4k-stop-rec').addEventListener('click', function () {
+      clearTimeout(timeout);
+      stopRecording();
+    });
+  }
+
   function startScreenRecording() {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
       alert('Screen recording is not supported in this browser.');
@@ -818,60 +892,25 @@
         surfaceSwitching: 'exclude',
         systemAudio: 'exclude',
       })
-      .then(function (stream) {
-        var mimeType = 'video/webm;codecs=vp8,opus';
-        if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm;codecs=vp8';
-        if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm';
-        if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = '';
-
-        var chunks = [];
-        var mr = new MediaRecorder(stream, mimeType ? { mimeType: mimeType } : undefined);
-        state.mediaRecorder = mr;
-        state.recordingChunks = chunks;
-        state.recording = true;
-
-        mr.ondataavailable = function (e) { if (e.data && e.data.size) chunks.push(e.data); };
-        mr.onstop = function () {
-          stream.getTracks().forEach(function (t) { t.stop(); });
-          state.recording = false;
-          var blob = new Blob(chunks, { type: mr.mimeType || 'video/webm' });
-          state.captureBlob = blob;
-          state.captureDataUrl = null;
-          state.captureType = MODES.RECORDING;
-          state.captureIsVideo = true;
-          state.step = 'form';
-          var ind = document.getElementById('s4k-rec-indicator');
-          if (ind) ind.remove();
-          showDrawer();
-          renderDrawer();
-        };
-
-        // If user stops sharing via browser UI, stop the recorder too
-        stream.getVideoTracks()[0].addEventListener('ended', function () { stopRecording(); });
-
-        mr.start(500);
-
-        // Recording indicator
-        var recIndicator = el('div', '', '● Recording... <button id="s4k-stop-rec" style="margin-left:12px;padding:4px 10px;background:#fff;color:#dc2626;border:none;border-radius:4px;cursor:pointer;font-size:12px;font-weight:600">Stop</button>');
-        recIndicator.id = 's4k-rec-indicator';
-        css(recIndicator, {
-          position: 'fixed', bottom: '80px',
-          right: state.position === 'bottom-right' ? '20px' : 'auto',
-          left: state.position === 'bottom-left' ? '20px' : 'auto',
-          background: '#dc2626', color: '#fff', padding: '8px 14px',
-          borderRadius: '20px', fontSize: '13px', fontWeight: '600',
-          zIndex: '2147483602', display: 'flex', alignItems: 'center',
-        });
-        document.body.appendChild(recIndicator);
-        recIndicator.style.setProperty('pointer-events', 'auto', 'important');
-
-        var timeout = setTimeout(stopRecording, 30000);
-        document.getElementById('s4k-stop-rec').addEventListener('click', function () {
-          clearTimeout(timeout);
-          stopRecording();
-        });
+      .then(function (displayStream) {
+        if (state.micEnabled && navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+          navigator.mediaDevices.getUserMedia({ audio: true })
+            .then(function (micStream) {
+              var combined = new MediaStream([
+                displayStream.getVideoTracks()[0],
+                micStream.getAudioTracks()[0],
+              ]);
+              startRecordingWithStream(combined, [displayStream, micStream]);
+            })
+            .catch(function () {
+              // Mic denied — fall back to display stream only
+              startRecordingWithStream(displayStream, [displayStream]);
+            });
+        } else {
+          startRecordingWithStream(displayStream, [displayStream]);
+        }
       })
-      .catch(function (e) {
+      .catch(function () {
         // User cancelled the picker — silently go back to mode selection
         state.step = 'mode';
         showDrawer();
