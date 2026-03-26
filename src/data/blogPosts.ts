@@ -18,6 +18,86 @@ export const ALL_TAGS = ['Release Notes', 'Product', 'Engineering', 'HIPAA'] as 
 
 export const blogPosts: BlogPost[] = [
   {
+    slug: 'release-notes-march-2026-b',
+    title: 'Release Notes — Assignees, Backlog & More',
+    date: '2026-03-26',
+    tags: ['Release Notes', 'Product'],
+    summary:
+      'Snaps can now be assigned to team members and shared tenants, a new Backlog column sits at the front of the Kanban board, and the snap feed has an "Assigned to Me" quick filter.',
+    content: [
+      {
+        type: 'paragraph',
+        text: 'This release focuses on workflow and triage — giving teams clearer ownership over snaps and a dedicated holding area for work that isn\'t ready to start yet.',
+      },
+      { type: 'divider' },
+
+      { type: 'h2', text: '👤 Snap Assignment' },
+      {
+        type: 'paragraph',
+        text: 'Every snap now has an assignee. When a snap is submitted, it is automatically assigned to the plugin owner. Team members can reassign it to any tenant that has active access to the plugin.',
+      },
+      {
+        type: 'ul',
+        items: [
+          'A new "Assigned To" dropdown appears in the snap detail sidebar, between the Status and Priority panels.',
+          'The dropdown lists the plugin owner first, followed by any tenants the plugin has been shared with (active shares only).',
+          'Selecting a new assignee saves immediately to Firestore — no save button needed.',
+          'Kanban cards show a small violet avatar with the assignee\'s initial for at-a-glance visibility.',
+          'All 97 existing snaps have been backfilled so the plugin owner is set as the default assignee.',
+        ],
+      },
+      {
+        type: 'callout',
+        variant: 'info',
+        text: 'Assignment is based on tenant accounts, not individual user accounts. If a plugin is shared with another company\'s tenant, that company\'s name appears as an assignee option.',
+      },
+
+      { type: 'divider' },
+
+      { type: 'h2', text: '📋 Backlog Column' },
+      {
+        type: 'paragraph',
+        text: 'A new "Backlog" status sits to the left of "New" in the Kanban board — giving teams a dedicated holding area for snaps that have been triaged but aren\'t ready to be worked on yet.',
+      },
+      {
+        type: 'ul',
+        items: [
+          'Drag cards from any column into Backlog to park them for later.',
+          'Backlog uses a neutral slate color scheme to visually distinguish it from the active workflow columns.',
+          'The status is available in the status selector on the snap detail page and in all feed filters.',
+        ],
+      },
+
+      { type: 'divider' },
+
+      { type: 'h2', text: '🔍 "Assigned to Me" Filter' },
+      {
+        type: 'paragraph',
+        text: 'The snap feed filter bar now includes an "Assigned to Me" toggle. When active, only snaps assigned to your account are shown — in both list and Kanban views.',
+      },
+      {
+        type: 'ul',
+        items: [
+          'The toggle is a one-click button at the end of the filter bar. It turns violet when active.',
+          'Works in combination with all other filters (status, priority, plugin, source, search).',
+          'The filter is applied client-side so it responds instantly without a round-trip to Firestore.',
+        ],
+      },
+
+      { type: 'divider' },
+
+      { type: 'h2', text: '⚙️ Under the Hood' },
+      {
+        type: 'ul',
+        items: [
+          'assignedToUid and assignedToName fields added to the SnapSubmission type and written by submitSnap at creation time.',
+          'A one-time migration script backfilled assignedToUid = tenantId on all 97 existing snap documents.',
+          'The Firestore submitSnap Cloud Function was redeployed to write assignedToUid on all new submissions.',
+        ],
+      },
+    ],
+  },
+  {
     slug: 'react-app-support',
     title: 'Snap4Knack Now Works in Any React App',
     date: '2026-03-24',
