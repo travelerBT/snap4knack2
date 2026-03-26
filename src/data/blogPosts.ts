@@ -18,171 +18,133 @@ export const ALL_TAGS = ['Release Notes', 'Product', 'Engineering', 'HIPAA'] as 
 
 export const blogPosts: BlogPost[] = [
   {
-    slug: 'mic-voiceover-screen-recording',
-    title: 'Screen Recording Now Supports Microphone Voiceover',
-    date: '2026-03-25',
+    slug: 'release-notes-march-2026-b',
+    title: 'Release Notes — Assignees, Backlog, Google SSO & Security',
+    date: '2026-03-26',
     tags: ['Release Notes', 'Product', 'Engineering'],
     summary:
-      'You can now narrate while you record. The screen recording capture mode has been updated with an optional microphone input, a device selector for users with multiple mics, and a 60-second recording cap.',
+      'Snaps can now be assigned to team members, a new Backlog column lands in the Kanban board, the snap feed has an "Assigned to Me" quick filter, Google Sign-In is now supported for existing accounts, and two high-severity security issues have been patched.',
     content: [
       {
         type: 'paragraph',
-        text: 'Screen recordings are a powerful way to report a bug or walk through an unexpected workflow. Until now, they were silent — you had to describe the issue separately in the form. Starting today, you can talk through what you\'re seeing as you record.',
+        text: 'This release covers workflow improvements, a new sign-in option, and a set of security hardening changes that came out of an internal security audit.',
       },
       { type: 'divider' },
 
-      { type: 'h2', text: '🎙️ Microphone Voiceover' },
+      { type: 'h2', text: '👤 Snap Assignment' },
       {
         type: 'paragraph',
-        text: 'A new "🎙️ Include microphone" checkbox appears below the Record Screen button in the capture mode selector. When checked:',
+        text: 'Every snap now has an assignee. When a snap is submitted, it is automatically assigned to the plugin owner. Team members can reassign it to any tenant that has active access to the plugin.',
       },
       {
-        type: 'ol',
+        type: 'ul',
         items: [
-          'The browser prompts for microphone permission (one-time, per browser).',
-          'A device dropdown appears if more than one audio input is detected — headsets, built-in mics, and USB devices are all listed by name.',
-          'Your chosen microphone\'s audio track is combined with the screen capture and recorded together into a single WebM file.',
-          'If microphone permission is denied, recording continues silently — no interruption, no error message.',
+          'A new "Assigned To" dropdown appears in the snap detail sidebar, between the Status and Priority panels.',
+          'The dropdown lists the plugin owner first, followed by any tenants the plugin has been shared with (active shares only).',
+          'Selecting a new assignee saves immediately to Firestore — no save button needed.',
+          'Kanban cards show a small violet avatar with the assignee\'s initial for at-a-glance visibility.',
+          'All 97 existing snaps have been backfilled so the plugin owner is set as the default assignee.',
         ],
       },
       {
         type: 'callout',
         variant: 'info',
-        text: 'Microphone voiceover is disabled automatically for HIPAA-enabled plugins — the entire screen recording mode is hidden in HIPAA mode, as it has always been.',
+        text: 'Assignment is based on tenant accounts, not individual user accounts. If a plugin is shared with another company\'s tenant, that company\'s name appears as an assignee option.',
       },
+
       { type: 'divider' },
 
-      { type: 'h2', text: '🎛️ Microphone Device Selector' },
+      { type: 'h2', text: '📋 Backlog Column' },
       {
         type: 'paragraph',
-        text: 'Users with multiple audio inputs (e.g. a built-in Mac microphone and a USB headset) now see a dropdown to select which device to use. The browser\'s media permission prompt is used once to enumerate device names; after that the dropdown renders instantly on subsequent uses within the same page session.',
+        text: 'A new "Backlog" status sits to the left of "New" in the Kanban board — giving teams a dedicated holding area for snaps that have been triaged but aren\'t ready to be worked on yet.',
       },
       {
         type: 'ul',
         items: [
-          'Devices are listed by their system name (e.g. "Bose QC35 II" or "MacBook Pro Microphone").',
-          'A "Default microphone" option at the top lets the OS decide, matching browser auto-select behaviour.',
-          'The selected device is remembered within the session so you don\'t have to re-pick on every snap.',
+          'Drag cards from any column into Backlog to park them for later.',
+          'Backlog uses a neutral slate color scheme to visually distinguish it from the active workflow columns.',
+          'The status is available in the status selector on the snap detail page and in all feed filters.',
         ],
       },
+
       { type: 'divider' },
 
-      { type: 'h2', text: '⏱️ 60-Second Recording Cap' },
+      { type: 'h2', text: '🔍 "Assigned to Me" Filter' },
       {
         type: 'paragraph',
-        text: 'The maximum recording duration has been extended from 30 seconds to 60 seconds. The Stop button and the auto-stop timer both respect the new limit. For most bug reports and walkthroughs, 60 seconds is more than enough — and keeps uploaded file sizes reasonable.',
-      },
-      { type: 'divider' },
-
-      { type: 'h2', text: '🧹 Widget Console Cleanup' },
-      {
-        type: 'paragraph',
-        text: 'Several diagnostic console.log statements left over from the Knack modal compatibility work have been removed from the widget. The widget now only emits console.warn messages for genuine error conditions (e.g. auth timeout, API key not found). This keeps your browser DevTools clean in production.',
-      },
-      { type: 'divider' },
-
-      { type: 'h2', text: '📌 Snap Feed View Preference Now Sticks' },
-      {
-        type: 'paragraph',
-        text: 'Switching between List and Kanban view on the Snap Feed now persists across navigation. Previously, leaving the feed and returning would reset it back to Kanban. The selected view is now saved in the browser and restored automatically the next time you visit — including across page refreshes and new sessions.',
+        text: 'The snap feed filter bar now includes an "Assigned to Me" toggle. When active, only snaps assigned to your account are shown — in both list and Kanban views.',
       },
       {
         type: 'ul',
         items: [
-          'Applies to both "My Feed" and "Shared Feeds" tabs.',
-          'Stored per-browser, so each team member\'s preference is independent.',
+          'The toggle is a one-click button at the end of the filter bar. It turns violet when active.',
+          'Works in combination with all other filters (status, priority, plugin, source, search).',
+          'The filter is applied client-side so it responds instantly without a round-trip to Firestore.',
         ],
       },
+
       { type: 'divider' },
 
+      { type: 'h2', text: '🔐 Google Sign-In' },
+      {
+        type: 'paragraph',
+        text: 'The login page now includes a "Sign in with Google" button. This is available to any user whose Snap4Knack account was created with a matching Google email address.',
+      },
+      {
+        type: 'ul',
+        items: [
+          'Google Sign-In only works for existing accounts — it cannot be used to create a new Snap4Knack account.',
+          'If the Google account has no linked Snap4Knack account, the sign-in is rejected with a clear error message and the session is immediately revoked.',
+          'The button appears on the login screen only — not on the forgot-password flow.',
+        ],
+      },
+      {
+        type: 'callout',
+        variant: 'info',
+        text: 'To link your existing account to Google Sign-In, make sure the email address on your Snap4Knack account matches your Google account email.',
+      },
+
+      { type: 'divider' },
+
+      { type: 'h2', text: '🛡️ Security Fixes' },
+      {
+        type: 'paragraph',
+        text: 'Two high-severity issues identified during an internal security audit have been patched and deployed.',
+      },
+      {
+        type: 'h3',
+        text: 'Privilege escalation via user document self-write (H-1)',
+      },
+      {
+        type: 'paragraph',
+        text: 'Previously, any authenticated user could overwrite their own Firestore user document in its entirety, including sensitive fields like roles, clientAccess, and sharedPluginAccess. This has been fixed by splitting the write rule into explicit create and update rules. Self-updates are now restricted to a safe allowlist of five non-privileged fields: displayName, notifyOnSnap, notifyOnComment, lastLogin, and tosAcceptedAt. All role and access assignments continue to be managed exclusively by Cloud Functions via the Admin SDK.',
+      },
+      {
+        type: 'h3',
+        text: 'Legacy storage path world-readable/writable (H-2)',
+      },
+      {
+        type: 'paragraph',
+        text: 'A legacy Firebase Storage path used during early development allowed any authenticated user to read, write, or delete files belonging to any tenant. That path is no longer used — all screenshots and recordings now live under tenant-scoped paths. The legacy path has been fully blocked.',
+      },
       {
         type: 'callout',
         variant: 'success',
-        text: 'No configuration changes required. All users with screen recording enabled will see the mic checkbox immediately after a hard refresh. HIPAA plugins are unaffected.',
+        text: 'Both fixes are live in production. No action is required from users or tenants.',
       },
-    ],
-  },
-  {
-    slug: 'knack-modal-widget-fix',
-    title: 'Widget Now Works Inside Knack Modals',
-    date: '2026-03-24',
-    tags: ['Release Notes', 'Engineering'],
-    summary:
-      'The Snap4Knack widget FAB, drawer, and all capture modes now work correctly when a Knack modal dialog is open — a multi-layer fix for pointer-event blocking, aria-hidden injection, and stale build artifacts.',
-    content: [
-      {
-        type: 'paragraph',
-        text: 'Several customers reported that the Snap4Knack widget would not open — or would open but be completely unclickable — when a Knack modal dialog was on screen. This release fixes that end-to-end.',
-      },
+
       { type: 'divider' },
 
-      { type: 'h2', text: '🐛 What Was Happening' },
-      {
-        type: 'paragraph',
-        text: 'Knack\'s modal system applies three independent mechanisms that together made the widget unreachable:',
-      },
-      {
-        type: 'ol',
-        items: [
-          'aria-hidden injection — Knack uses the aria-hidden npm package to stamp aria-hidden="true" and data-aria-hidden="true" on every element in the background when a modal opens. Some browsers and polyfills treat aria-hidden as an interaction barrier.',
-          'CSS pointer-events: none — Knack applies a stylesheet rule that sets pointer-events: none on all direct children of <body> while a dialog is open. This silently blocked every click on the FAB, the drawer panel, the area-selection overlay, and the recording Stop button.',
-          'Stale dist/ — Firebase Hosting serves from the dist/ folder, which is only updated by running npm run build. Previous fix attempts were deployed without a build step, so the live site was serving months-old code regardless of what was committed.',
-        ],
-      },
-      { type: 'divider' },
-
-      { type: 'h2', text: '✅ The Fix' },
-      {
-        type: 'h3',
-        text: 'MutationObserver on every widget element',
-      },
-      {
-        type: 'paragraph',
-        text: 'A MutationObserver is attached to each element after it is appended to document.body. It watches for aria-hidden, data-aria-hidden, and inert attribute changes and strips them immediately whenever Knack adds them.',
-      },
-      {
-        type: 'h3',
-        text: 'pointer-events: auto !important via setProperty',
-      },
-      {
-        type: 'paragraph',
-        text: 'After every document.body.appendChild call, the widget now immediately calls element.style.setProperty(\'pointer-events\', \'auto\', \'important\'). The !important priority overrides the Knack stylesheet rule. This was applied to all five appendages: the FAB, the drawer panel, the area-select overlay, the pin-element overlay, and the recording indicator.',
-      },
-      {
-        type: 'h3',
-        text: 'Z-index stack corrected',
-      },
-      {
-        type: 'paragraph',
-        text: 'Element z-indices were reorganised so the drawer (2147483646) and FAB (2147483647) sit above the Knack dialog overlay (z-index: 50), while remaining below 2147483647 — the browser maximum — for the FAB only.',
-      },
-      {
-        type: 'h3',
-        text: 'Build pipeline enforced',
-      },
-      {
-        type: 'paragraph',
-        text: 'The root cause of prior failed deploys was confirmed: dist/ was stale because npm run build was never run before firebase deploy --only hosting. All subsequent deployments now run the build step first.',
-      },
-      { type: 'divider' },
-
-      { type: 'h2', text: '🔧 Elements Fixed' },
+      { type: 'h2', text: '⚙️ Under the Hood' },
       {
         type: 'ul',
         items: [
-          'FAB (feedback button) — clicking now opens the drawer even when a Knack modal is open',
-          'Drawer panel — all buttons (Full Page, Select Area, Pin Element, Record Screen, close, expand) are now fully interactive',
-          'Area-select overlay — crosshair drag-to-select works correctly',
-          'Pin-element overlay — click-to-pin works correctly',
-          'Recording indicator — Stop button responds to clicks during an active recording session',
+          'assignedToUid and assignedToName fields added to the SnapSubmission type and written by submitSnap at creation time.',
+          'A one-time migration script backfilled assignedToUid = tenantId on all 97 existing snap documents.',
+          'The Firestore submitSnap Cloud Function was redeployed to write assignedToUid on all new submissions.',
+          'Content Security Policy updated to allow apis.google.com and accounts.google.com, required for the Google Sign-In popup flow.',
         ],
-      },
-      { type: 'divider' },
-
-      {
-        type: 'callout',
-        variant: 'success',
-        text: 'No configuration changes are required. The fix is bundled in the widget script automatically loaded by your Knack page. Hard-refresh your Knack app to pick up the latest version.',
       },
     ],
   },

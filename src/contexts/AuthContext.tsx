@@ -5,6 +5,8 @@ import {
   signOut,
   sendPasswordResetEmail,
   onAuthStateChanged,
+  GoogleAuthProvider,
+  signInWithPopup,
   type User as FirebaseUser,
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
@@ -52,18 +54,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             }
           }
         } else {
-          // New user — create minimal user doc
-          const newUser: User = {
-            id: fbUser.uid,
-            uid: fbUser.uid,
-            email: fbUser.email || '',
-            displayName: fbUser.displayName || '',
-            role: 'tenant',
-            roles: ['tenant'],
-            createdAt: serverTimestamp() as User['createdAt'],
-          };
-          await setDoc(doc(db, 'users', fbUser.uid), newUser);
-          setUser(newUser);
+          // No user doc — for Google sign-ins, don't auto-create an account.
+          // loginWithGoogle() will sign them out with a user-friendly error.
+          const isGoogleUser = fbUser.providerData.some(
+            (p) => p.providerId === 'google.com'
+          );
+          if (isGoogleUser) {
+            // loginWithGoogle handles sign-out and error; just clear state here
+            setUser(null);
+            setTenant(null);
+          } else {
+            // Email/password signup — create minimal user doc
+            const newUser: User = {
+              id: fbUser.uid,
+              uid: fbUser.uid,
+              email: fbUser.email || '',
+              displayName: fbUser.displayName || '',
+              role: 'tenant',
+              roles: ['tenant'],
+              createdAt: serverTimestamp() as User['createdAt'],
+            };
+            await setDoc(doc(db, 'users', fbUser.uid), newUser);
+            setUser(newUser);
+          }
         }
       } catch (err) {
         console.error('Error loading user data:', err);
@@ -109,6 +122,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const loginWithGoogle = async () => {
+    const provider = new GoogleAuthProvider();
+    const result = await signInWithPopup(auth, provider);
+    // Only allow sign-in for users who already have a Snap4Knack account.
+    // Do NOT auto-create accounts via Google SSO.
+    const userDoc = await getDoc(doc(db, 'users', result.user.uid));
+    if (!userDoc.exists()) {
+      await signOut(auth);
+      throw new Error(
+        'no-account-found: No Snap4Knack account is linked to this Google account. ' +
+        'Please sign in with your email and password, or contact your administrator.'
+      );
+    }
+    await updateDoc(doc(db, 'users', result.user.uid), {
+      lastLogin: serverTimestamp(),
+    });
+  };
+
   const logout = async () => {
     await signOut(auth);
   };
@@ -149,6 +180,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     tosAccepted,
     signup,
     login,
+    loginWithGoogle,
     logout,
     resetPassword,
     acceptTerms,

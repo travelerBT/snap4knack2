@@ -310,6 +310,7 @@ export interface AuthContextType {
   tosAccepted: boolean;
   signup: (email: string, password: string, companyName: string) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
+  loginWithGoogle: () => Promise<void>;
   logout: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   acceptTerms: () => Promise<void>;
