@@ -710,6 +710,8 @@ export const submitSnap = functions.https.onRequest(
           (typeof ctx.knackUserId === "string" && ctx.knackUserId.includes("@") ? ctx.knackUserId : "");
         return email || null;
       })(),
+      assignedToUid: tenantId,   // default-assign to plugin owner
+      assignedToName: null,      // resolved by the app from tenant profile
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     };
 

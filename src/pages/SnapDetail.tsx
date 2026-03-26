@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   doc, updateDoc, collection, addDoc, serverTimestamp,
-  query, orderBy, onSnapshot,
+  query, orderBy, onSnapshot, getDocs, where,
 } from 'firebase/firestore';
 import { db, storage } from '../firebase';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -20,13 +20,14 @@ import {
   PhotoIcon,
   XMarkIcon,
   BellIcon,
+  UserCircleIcon,
 } from '@heroicons/react/24/outline';
-import type { SnapSubmission, SnapComment, AnnotationShape, StatusHistoryEntry } from '../types';
+import type { SnapSubmission, SnapComment, AnnotationShape, StatusHistoryEntry, TenantShare } from '../types';
 import { STATUS_OPTIONS, PRIORITY_OPTIONS, CAPTURE_TYPE_LABELS } from '../config/constants';
 
 export default function SnapDetail() {
   const { id } = useParams<{ id: string }>();
-  const { user } = useAuth();
+  const { user, tenant } = useAuth();
   const tenantId = user?.uid || '';
 
   const [sub, setSub] = useState<SnapSubmission | null>(null);
@@ -42,6 +43,31 @@ export default function SnapDetail() {
   const [showConsole, setShowConsole] = useState(false);
   const [history, setHistory] = useState<StatusHistoryEntry[]>([]);
   const auditLoggedRef = useRef(false);
+  const [assignees, setAssignees] = useState<{ uid: string; name: string }[]>([]);
+  const [assigneeSaving, setAssigneeSaving] = useState(false);
+
+  useEffect(() => {
+    if (!sub?.pluginId || !tenantId) return;
+    getDocs(
+      query(
+        collection(db, 'tenant_shares'),
+        where('ownerTenantId', '==', tenantId),
+        where('pluginId', '==', sub.pluginId),
+        where('status', '==', 'active')
+      )
+    ).then((snap) => {
+      const ownerName = tenant?.companyName || user?.displayName || user?.email || 'Plugin Owner';
+      const list: { uid: string; name: string }[] = [
+        { uid: tenantId, name: ownerName },
+        ...snap.docs.map((d) => {
+          const s = d.data() as TenantShare;
+          return { uid: s.grantedTenantId, name: s.grantedCompanyName };
+        }),
+      ];
+      setAssignees(list);
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sub?.pluginId, tenantId]);
 
   useEffect(() => {
     if (sub?.type === 'console_errors') setShowConsole(true);
@@ -286,6 +312,14 @@ export default function SnapDetail() {
       }).catch(() => {});
     }
     setUpdating(false);
+  };
+
+  const updateAssignee = async (uid: string, name: string) => {
+    if (!id) return;
+    setAssigneeSaving(true);
+    await updateDoc(doc(db, 'snap_submissions', id), { assignedToUid: uid, assignedToName: name });
+    setSub((s) => s ? { ...s, assignedToUid: uid, assignedToName: name } : s);
+    setAssigneeSaving(false);
   };
 
   if (loading) {
@@ -560,6 +594,29 @@ export default function SnapDetail() {
               </button>
             )}
           </div>
+
+          {/* Assigned To */}
+          {assignees.length > 0 && (
+            <div className="bg-white shadow rounded-lg p-5">
+              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-1.5">
+                <UserCircleIcon className="h-3.5 w-3.5" />
+                Assigned To
+              </h3>
+              <select
+                value={sub.assignedToUid ?? tenantId}
+                disabled={assigneeSaving}
+                onChange={(e) => {
+                  const match = assignees.find((a) => a.uid === e.target.value);
+                  if (match) updateAssignee(match.uid, match.name);
+                }}
+                className="w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 text-sm disabled:opacity-50"
+              >
+                {assignees.map((a) => (
+                  <option key={a.uid} value={a.uid}>{a.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Priority */}
           <div className="bg-white shadow rounded-lg p-5">
