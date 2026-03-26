@@ -174,6 +174,14 @@ function SnapCard({
           )}
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
+          {sub.assignedToName && (
+            <span
+              title={`Assigned to ${sub.assignedToName}`}
+              className="h-5 w-5 rounded-full bg-violet-100 flex items-center justify-center text-[9px] font-bold text-violet-700 flex-shrink-0"
+            >
+              {sub.assignedToName[0].toUpperCase()}
+            </span>
+          )}
           {priority && (
             <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${priority.color}`}>{priority.label}</span>
           )}

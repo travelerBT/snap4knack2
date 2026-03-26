@@ -193,6 +193,8 @@ export interface SnapSubmission {
   sortOrder?: number;
   submitterEmail?: string;    // top-level email for notifications; extracted at submission time
   notifySubmitter?: boolean; // send status-change emails to the submitter
+  assignedToUid?: string;     // uid of the assigned tenant user
+  assignedToName?: string;    // display name of the assigned tenant user
   createdAt: Timestamp;
   resolvedAt?: Timestamp;
 }
