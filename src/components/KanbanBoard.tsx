@@ -33,6 +33,7 @@ const CAPTURE_ICONS: Record<string, React.ReactNode> = {
 };
 
 const COLUMN_STYLES: Record<string, { bg: string; headerBg: string; border: string; count: string }> = {
+  backlog:            { bg: 'bg-slate-50',  headerBg: 'bg-slate-100',  border: 'border-slate-200', count: 'bg-slate-200 text-slate-700' },
   new:                { bg: 'bg-blue-50',   headerBg: 'bg-blue-100',   border: 'border-blue-200',  count: 'bg-blue-200 text-blue-800' },
   in_progress:        { bg: 'bg-yellow-50', headerBg: 'bg-yellow-100', border: 'border-yellow-200', count: 'bg-yellow-200 text-yellow-800' },
   ready_for_testing:  { bg: 'bg-purple-50', headerBg: 'bg-purple-100', border: 'border-purple-200', count: 'bg-purple-200 text-purple-800' },
