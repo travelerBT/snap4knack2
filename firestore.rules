@@ -44,7 +44,16 @@ service cloud.firestore {
     // Users collection
     match /users/{uid} {
       allow read: if isAuthenticated() && (request.auth.uid == uid || isAdmin());
-      allow write: if isAuthenticated() && (request.auth.uid == uid || isAdmin());
+      // Admins can write any field
+      allow write: if isAdmin();
+      // Users can create their own doc during email/password signup
+      allow create: if isAuthenticated() && request.auth.uid == uid;
+      // Users can only self-update a safe allowlist of non-privileged fields.
+      // Sensitive fields (roles, role, clientAccess, sharedPluginAccess, tenantId, suspended)
+      // are managed exclusively by Cloud Functions via the Admin SDK.
+      allow update: if isAuthenticated() && request.auth.uid == uid &&
+        request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['displayName', 'notifyOnSnap', 'notifyOnComment', 'lastLogin', 'tosAcceptedAt']);
     }
 
     // Tenants collection

@@ -39,12 +39,10 @@ service firebase.storage {
       allow delete: if isAuthenticated() && isTenantOwner(tenantId);
     }
 
-    // Legacy path (keep for backwards compat — read requires tenant ownership)
+    // Legacy path — no longer in use; block all client access.
+    // Screenshots now live under snap_screenshots/{tenantId}/.
     match /snaps/{pluginId}/{submissionId}/{fileName} {
-      allow create: if isAuthenticated() &&
-        request.resource.size < 20 * 1024 * 1024;
-      allow read: if isAuthenticated();
-      allow delete: if isAuthenticated();
+      allow read, write: if false;
     }
 
     // Comment image attachments
