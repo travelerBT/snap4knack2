@@ -72,6 +72,7 @@ export default function SnapFeed() {
   const [typeFilter, setTypeFilter] = useState('');
   const [priorityFilter, setPriorityFilter] = useState('');
   const [sourceFilter, setSourceFilter] = useState('');
+  const [assignedToMeFilter, setAssignedToMeFilter] = useState(false);
 
   useEffect(() => {
     if (!tenantId) return;
@@ -149,15 +150,19 @@ export default function SnapFeed() {
   );
 
   const filtered = useMemo(() => {
-    if (!search.trim()) return submissions;
+    let result = submissions;
+    if (assignedToMeFilter) {
+      result = result.filter((sub) => sub.assignedToUid === tenantId);
+    }
+    if (!search.trim()) return result;
     const s = search.toLowerCase();
-    return submissions.filter(
+    return result.filter(
       (sub) =>
         sub.context?.pageUrl?.toLowerCase().includes(s) ||
         sub.formData?.category?.toLowerCase().includes(s) ||
         sub.formData?.description?.toLowerCase().includes(s)
     );
-  }, [submissions, search]);
+  }, [submissions, search, assignedToMeFilter, tenantId]);
 
   const pluginMap = useMemo(() => Object.fromEntries(plugins.map((p) => [p.id, p])), [plugins]);
   const connectionMap = useMemo(() => Object.fromEntries(connections.map((c) => [c.id, c])), [connections]);
@@ -256,7 +261,7 @@ export default function SnapFeed() {
 
       {/* Filter bar */}
       <div className="bg-white shadow rounded-lg p-4 mb-6">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-6">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-7">
           {/* Search */}
           <div className="relative">
             <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -317,6 +322,19 @@ export default function SnapFeed() {
             <option value="knack">Knack</option>
             <option value="react">React</option>
           </select>
+          {/* Assigned to me */}
+          <button
+            type="button"
+            onClick={() => setAssignedToMeFilter((v) => !v)}
+            className={`flex items-center justify-center gap-1.5 w-full rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+              assignedToMeFilter
+                ? 'bg-violet-600 border-violet-600 text-white'
+                : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            <UsersIcon className="h-4 w-4" />
+            Assigned to Me
+          </button>
         </div>
       </div>
 
