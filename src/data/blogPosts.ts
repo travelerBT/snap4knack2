@@ -19,15 +19,15 @@ export const ALL_TAGS = ['Release Notes', 'Product', 'Engineering', 'HIPAA'] as 
 export const blogPosts: BlogPost[] = [
   {
     slug: 'release-notes-march-2026-b',
-    title: 'Release Notes — Assignees, Backlog & More',
+    title: 'Release Notes — Assignees, Backlog, Google SSO & Security',
     date: '2026-03-26',
-    tags: ['Release Notes', 'Product'],
+    tags: ['Release Notes', 'Product', 'Engineering'],
     summary:
-      'Snaps can now be assigned to team members and shared tenants, a new Backlog column sits at the front of the Kanban board, and the snap feed has an "Assigned to Me" quick filter.',
+      'Snaps can now be assigned to team members, a new Backlog column lands in the Kanban board, the snap feed has an "Assigned to Me" quick filter, Google Sign-In is now supported for existing accounts, and two high-severity security issues have been patched.',
     content: [
       {
         type: 'paragraph',
-        text: 'This release focuses on workflow and triage — giving teams clearer ownership over snaps and a dedicated holding area for work that isn\'t ready to start yet.',
+        text: 'This release covers workflow improvements, a new sign-in option, and a set of security hardening changes that came out of an internal security audit.',
       },
       { type: 'divider' },
 
@@ -86,6 +86,56 @@ export const blogPosts: BlogPost[] = [
 
       { type: 'divider' },
 
+      { type: 'h2', text: '🔐 Google Sign-In' },
+      {
+        type: 'paragraph',
+        text: 'The login page now includes a "Sign in with Google" button. This is available to any user whose Snap4Knack account was created with a matching Google email address.',
+      },
+      {
+        type: 'ul',
+        items: [
+          'Google Sign-In only works for existing accounts — it cannot be used to create a new Snap4Knack account.',
+          'If the Google account has no linked Snap4Knack account, the sign-in is rejected with a clear error message and the session is immediately revoked.',
+          'The button appears on the login screen only — not on the forgot-password flow.',
+        ],
+      },
+      {
+        type: 'callout',
+        variant: 'info',
+        text: 'To link your existing account to Google Sign-In, make sure the email address on your Snap4Knack account matches your Google account email.',
+      },
+
+      { type: 'divider' },
+
+      { type: 'h2', text: '🛡️ Security Fixes' },
+      {
+        type: 'paragraph',
+        text: 'Two high-severity issues identified during an internal security audit have been patched and deployed.',
+      },
+      {
+        type: 'h3',
+        text: 'Privilege escalation via user document self-write (H-1)',
+      },
+      {
+        type: 'paragraph',
+        text: 'Previously, any authenticated user could overwrite their own Firestore user document in its entirety, including sensitive fields like roles, clientAccess, and sharedPluginAccess. This has been fixed by splitting the write rule into explicit create and update rules. Self-updates are now restricted to a safe allowlist of five non-privileged fields: displayName, notifyOnSnap, notifyOnComment, lastLogin, and tosAcceptedAt. All role and access assignments continue to be managed exclusively by Cloud Functions via the Admin SDK.',
+      },
+      {
+        type: 'h3',
+        text: 'Legacy storage path world-readable/writable (H-2)',
+      },
+      {
+        type: 'paragraph',
+        text: 'A legacy Firebase Storage path used during early development allowed any authenticated user to read, write, or delete files belonging to any tenant. That path is no longer used — all screenshots and recordings now live under tenant-scoped paths. The legacy path has been fully blocked.',
+      },
+      {
+        type: 'callout',
+        variant: 'success',
+        text: 'Both fixes are live in production. No action is required from users or tenants.',
+      },
+
+      { type: 'divider' },
+
       { type: 'h2', text: '⚙️ Under the Hood' },
       {
         type: 'ul',
@@ -93,6 +143,7 @@ export const blogPosts: BlogPost[] = [
           'assignedToUid and assignedToName fields added to the SnapSubmission type and written by submitSnap at creation time.',
           'A one-time migration script backfilled assignedToUid = tenantId on all 97 existing snap documents.',
           'The Firestore submitSnap Cloud Function was redeployed to write assignedToUid on all new submissions.',
+          'Content Security Policy updated to allow apis.google.com and accounts.google.com, required for the Google Sign-In popup flow.',
         ],
       },
     ],
