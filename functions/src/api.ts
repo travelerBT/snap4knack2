@@ -39,6 +39,7 @@ export const submitSnap = functions.https.onRequest(
 
       const body = req.body as {
         type?: string;
+        source?: string;
         screenshotUrl?: string;
         recordingUrl?: string;
         annotationData?: unknown;
@@ -53,6 +54,7 @@ export const submitSnap = functions.https.onRequest(
         tenantId,
         submittedBy: decoded.uid,
         type: body.type || "full_viewport",
+        source: body.source || null,
         screenshotUrl: body.screenshotUrl || null,
         recordingUrl: body.recordingUrl || null,
         annotationData: body.annotationData || null,

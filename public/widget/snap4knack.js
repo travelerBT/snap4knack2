@@ -1448,6 +1448,7 @@
     };
     var payload = {
       type: state.captureType || MODES.FULL,
+      source: state.appSource || null,
       screenshotUrl: screenshotUrl || null,
       recordingUrl: recordingUrl || null,
       annotationData: shapes.length ? { shapes: shapes } : null,
