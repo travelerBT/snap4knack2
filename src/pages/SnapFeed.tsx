@@ -113,6 +113,9 @@ export default function SnapFeed() {
       setLastLiveDoc(snap.docs[snap.docs.length - 1] ?? null);
       setHasMore(snap.size === PAGE_SIZE);
       setLoading(false);
+    }, (err) => {
+      console.error('SnapFeed query error:', err);
+      setLoading(false);
     });
     return unsub;
   // eslint-disable-next-line react-hooks/exhaustive-deps
