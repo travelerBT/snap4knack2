@@ -12,6 +12,7 @@ import {
   UserPlusIcon,
   CheckCircleIcon,
   ExclamationCircleIcon,
+  KeyIcon,
 } from '@heroicons/react/24/outline';
 
 type Tab = 'overview' | 'add-tenant';
@@ -138,6 +139,16 @@ export default function Admin() {
                 <div>
                   <p className="text-sm font-medium text-gray-900">User Management</p>
                   <p className="text-xs text-gray-500">View, search, and manage all platform users</p>
+                </div>
+              </Link>
+              <Link
+                to="/admin/api-keys"
+                className="flex items-center gap-3 p-4 rounded-lg border border-gray-200 hover:border-blue-300 hover:bg-blue-50 transition-colors"
+              >
+                <KeyIcon className="h-5 w-5 text-blue-600" />
+                <div>
+                  <p className="text-sm font-medium text-gray-900">API Keys</p>
+                  <p className="text-xs text-gray-500">Issue and revoke tenant API keys for MCP agent access</p>
                 </div>
               </Link>
               <button

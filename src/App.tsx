@@ -26,6 +26,7 @@ import SnapDetail from './pages/SnapDetail';
 import Account from './pages/Account';
 import Admin from './pages/Admin';
 import AdminUsers from './pages/AdminUsers';
+import ApiKeys from './pages/ApiKeys';
 import AuditLog from './pages/AuditLog';
 
 // Client portal pages
@@ -113,6 +114,7 @@ function AppRoutes() {
         <Route path="/account" element={<Account />} />
         <Route path="/admin" element={<Admin />} />
         <Route path="/admin/users" element={<AdminUsers />} />
+        <Route path="/admin/api-keys" element={<RequireAdmin><ApiKeys /></RequireAdmin>} />
         <Route path="/audit-log" element={<RequireAdmin><AuditLog /></RequireAdmin>} />
       </Route>
 
