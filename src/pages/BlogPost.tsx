@@ -13,6 +13,7 @@ const TAG_COLORS: Record<string, string> = {
   'Product':       'bg-purple-100 text-purple-700',
   'Engineering':   'bg-green-100 text-green-700',
   'HIPAA':         'bg-red-100 text-red-700',
+  'AI Agent':      'bg-amber-100 text-amber-700',
 };
 
 const CALLOUT_STYLES: Record<string, string> = {

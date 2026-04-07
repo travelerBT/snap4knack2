@@ -14,9 +14,134 @@ export interface BlogSection {
   variant?: 'info' | 'success' | 'warning'; // for callout
 }
 
-export const ALL_TAGS = ['Release Notes', 'Product', 'Engineering', 'HIPAA'] as const;
+export const ALL_TAGS = ['Release Notes', 'Product', 'Engineering', 'HIPAA', 'AI Agent'] as const;
 
 export const blogPosts: BlogPost[] = [
+  {
+    slug: 'ai-agent-mcp-integration',
+    title: 'AI Agents Can Now File Snaps Automatically with the Snap4Knack MCP Server',
+    date: '2026-04-07',
+    tags: ['Release Notes', 'Product', 'Engineering', 'AI Agent'],
+    summary:
+      'Snap4Knack now exposes a hosted Model Context Protocol (MCP) server so AI monitoring agents can read your snap feed, triage issues, add comments, and file new snaps — all programmatically, with full HIPAA DLP support.',
+    content: [
+      {
+        type: 'paragraph',
+        text: 'AI-powered monitoring agents are becoming a core part of modern development workflows. Starting today, those agents can connect directly to Snap4Knack using the Model Context Protocol (MCP) — the emerging open standard for giving AI systems structured access to tools and data.',
+      },
+      { type: 'divider' },
+
+      { type: 'h2', text: '🤖 What is the MCP Server?' },
+      {
+        type: 'paragraph',
+        text: 'The Snap4Knack MCP server is a hosted HTTP endpoint that speaks the Model Context Protocol. Any MCP-compatible AI agent — Claude, Cursor, or custom agents built with the MCP SDK — can authenticate with a tenant API key and gain access to 8 structured tools for interacting with your snap data.',
+      },
+      {
+        type: 'callout',
+        variant: 'info',
+        text: 'MCP endpoint: https://us-central1-snap4knack2.cloudfunctions.net/mcp — authenticate with Authorization: Bearer <api-key>',
+      },
+
+      { type: 'divider' },
+
+      { type: 'h2', text: '🛠️ Available Tools' },
+      {
+        type: 'paragraph',
+        text: 'The MCP server exposes 8 tools covering the full read/triage/submit workflow:',
+      },
+      {
+        type: 'ul',
+        items: [
+          'list_snaps — List snaps with optional filters: status, priority, source, plugin, and limit. Returns newest first.',
+          'get_snap — Fetch the full detail of a single snap by ID.',
+          'list_plugins — List all snap plugins for the authenticated tenant.',
+          'list_connections — List all Knack/React connections for the tenant.',
+          'update_snap_status — Move a snap to a new status (backlog, new, in_progress, ready_for_testing, resolved, archived). Writes to history.',
+          'update_snap_priority — Change snap priority to low, medium, high, or critical.',
+          'add_comment — Post a comment to any snap on behalf of the AI agent.',
+          'create_snap — Submit a new snap from an AI agent — the primary tool for automated monitoring.',
+        ],
+      },
+
+      { type: 'divider' },
+
+      { type: 'h2', text: '🚨 Automated Snap Submission' },
+      {
+        type: 'paragraph',
+        text: 'The create_snap tool is designed for monitoring agents that detect errors in production and file snaps automatically — without a human in the loop. A monitoring agent watching a Knack or React application can detect a console error, capture the page URL and a screenshot, and submit a fully-formed snap to the right plugin in seconds.',
+      },
+      {
+        type: 'ul',
+        items: [
+          'pluginId and description are required. Everything else is optional.',
+          'Pass consoleErrors and logEntries arrays to attach machine-captured diagnostic data.',
+          'Attach a base64-encoded PNG screenshot — it is stored in Firebase Storage under the tenant\'s path.',
+          'Snaps are tagged with source: ai_agent and capture type: AI Submission so they are visually distinct in the feed and Kanban.',
+          'The snap number counter is the same shared sequence used by the widget — agents and humans use one unified feed.',
+        ],
+      },
+
+      { type: 'divider' },
+
+      { type: 'h2', text: '🏥 HIPAA Support' },
+      {
+        type: 'paragraph',
+        text: 'For tenants with HIPAA mode enabled, the create_snap tool applies the same DLP pipeline used by the widget:',
+      },
+      {
+        type: 'ul',
+        items: [
+          'Snap descriptions are run through Google Cloud DLP to redact PHI before storage.',
+          'Screenshots are uploaded to a staging bucket, then async-redacted by the onScreenshotStaged trigger before being moved to the live path.',
+          'Page URL query parameters are stripped to prevent PII leakage via URL.',
+          'Console errors and log entries are dropped entirely on HIPAA plugins.',
+          'All HIPAA snap submissions are written to the audit_log collection.',
+        ],
+      },
+      {
+        type: 'callout',
+        variant: 'success',
+        text: 'HIPAA mode is detected automatically per-plugin. Agents do not need to know whether a plugin is HIPAA-enabled — the server handles it.',
+      },
+
+      { type: 'divider' },
+
+      { type: 'h2', text: '🔑 API Keys & Access Control' },
+      {
+        type: 'paragraph',
+        text: 'API keys are issued by the Snap4Knack admin team and scoped to a single tenant. An agent authenticated with a key can only access that tenant\'s snaps, plugins, and connections — cross-tenant access is not possible by design.',
+      },
+      {
+        type: 'ul',
+        items: [
+          'Each agent should have its own named key (e.g., "docgen4knack monitoring agent") so it can be revoked independently.',
+          'Keys can be revoked instantly from the Admin panel — the agent loses access on the next request.',
+          'Contact the Snap4Knack team to request API keys for your tenant.',
+        ],
+      },
+
+      { type: 'divider' },
+
+      { type: 'h2', text: '🔌 Connecting Your Agent' },
+      {
+        type: 'paragraph',
+        text: 'The MCP server uses the Streamable HTTP transport — the current MCP standard for hosted servers. Most MCP clients support this natively.',
+      },
+      {
+        type: 'ul',
+        items: [
+          'Claude Desktop: add a server entry with type: "http", the MCP URL, and an Authorization: Bearer header.',
+          'Cursor: add the server to ~/.cursor/mcp.json with the url and Authorization header.',
+          'Custom agents: use the @modelcontextprotocol/sdk StreamableHTTPClientTransport (TypeScript) or streamablehttp_client (Python).',
+        ],
+      },
+      {
+        type: 'callout',
+        variant: 'info',
+        text: 'Reach out if you need help wiring up your monitoring agent — we\'re happy to assist with the initial integration.',
+      },
+    ],
+  },
   {
     slug: 'release-notes-march-2026-b',
     title: 'Release Notes — Assignees, Backlog, Google SSO & Security',
