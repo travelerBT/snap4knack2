@@ -77,6 +77,14 @@
         { "fieldPath": "tenantId", "order": "ASCENDING" },
         { "fieldPath": "eventAt", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "api_keys",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "keyHash", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

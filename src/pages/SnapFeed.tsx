@@ -35,6 +35,7 @@ import {
   ListBulletIcon,
   UsersIcon,
   ShieldCheckIcon,
+  CpuChipIcon,
 } from '@heroicons/react/24/outline';
 import type { SnapSubmission, SnapPlugin, Connection, TenantShare } from '../types';
 import { STATUS_OPTIONS, PRIORITY_OPTIONS, CAPTURE_TYPE_LABELS } from '../config/constants';
@@ -47,6 +48,7 @@ const CAPTURE_ICONS: Record<string, React.ReactNode> = {
   element_pin: <CursorArrowRaysIcon className="h-4 w-4" />,
   screen_recording: <VideoCameraIcon className="h-4 w-4" />,
   console_errors: <CommandLineIcon className="h-4 w-4" />,
+  ai_submission: <CpuChipIcon className="h-4 w-4" />,
 };
 
 export default function SnapFeed() {
@@ -326,6 +328,7 @@ export default function SnapFeed() {
             <option value="">All sources</option>
             <option value="knack">Knack</option>
             <option value="react">React</option>
+            <option value="ai_agent">AI Agent</option>
           </select>
           {/* Assigned to me */}
           <button

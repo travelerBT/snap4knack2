@@ -50,6 +50,7 @@ export const CAPTURE_TYPE_LABELS: Record<string, string> = {
   element_pin: 'Pinned Element',
   screen_recording: 'Screen Recording',
   console_errors: 'Console Output',
+  ai_submission: 'AI Submission',
 };
 
 // ─── Plugin Defaults ─────────────────────────────────────────────────────────

@@ -12,6 +12,7 @@ import {
   CheckIcon,
   TrashIcon,
   PlusIcon,
+  CpuChipIcon,
 } from '@heroicons/react/24/outline';
 import type { ApiKey } from '../types';
 
@@ -110,6 +111,31 @@ export default function ApiKeys() {
           <button onClick={() => setNewKeyValue(null)} className="mt-2 text-xs text-yellow-700 hover:underline">Dismiss</button>
         </div>
       )}
+
+      {/* MCP Endpoint */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-5 mb-6">
+        <div className="flex items-center gap-2 mb-2">
+          <CpuChipIcon className="h-5 w-5 text-blue-600" />
+          <h2 className="text-base font-semibold text-blue-900">AI Agent MCP Endpoint</h2>
+        </div>
+        <p className="text-sm text-blue-700 mb-3">
+          Connect AI monitoring agents to Snap4Knack using the Model Context Protocol.
+          Pass your API key as the Bearer token.
+        </p>
+        <div className="flex items-center gap-2">
+          <code className="flex-1 bg-white border border-blue-200 rounded px-3 py-2 text-xs font-mono text-blue-900 truncate">
+            https://us-central1-snap4knack2.cloudfunctions.net/mcp
+          </code>
+          <button
+            onClick={() => copy('https://us-central1-snap4knack2.cloudfunctions.net/mcp', 'mcp-url')}
+            className="flex-shrink-0 bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-2 rounded-lg flex items-center gap-1"
+          >
+            {copiedId === 'mcp-url' ? <CheckIcon className="h-3 w-3" /> : <ClipboardDocumentIcon className="h-3 w-3" />}
+            Copy
+          </button>
+        </div>
+        <p className="text-xs text-blue-600 mt-2">Authorization: Bearer {'<your-api-key>'}</p>
+      </div>
 
       {/* Create new */}
       <div className="bg-white shadow rounded-lg p-6 mb-6">

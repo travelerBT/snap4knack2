@@ -9,6 +9,7 @@ import sgMail from "@sendgrid/mail";
 import axios from "axios";
 import { randomUUID } from "crypto";
 import { snapNotificationEmail, criticalSnapEmail, clientInvitationEmail, commentNotificationEmail, submitterStatusUpdateEmail, newTenantWelcomeEmail, sharedFeedEmail } from "./emailTemplates";
+import { HIPAA_INFO_TYPES, HIPAA_CUSTOM_INFO_TYPES, dlpRedactText, stripQueryParams } from "./utils";
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -28,90 +29,7 @@ const SENDGRID_FROM = "info@finemountainconsulting.com";
 // gRPC status code 6 = ALREADY_EXISTS (used when creating Secret Manager secrets)
 const SECRET_ALREADY_EXISTS = 6;
 
-// HIPAA infoTypes scanned in both text and images.
-// IMPORTANT: every built-in type referenced in DLP_REPLACEMENTS below MUST appear here —
-// Google DLP rejects deidentifyContent calls where a deidentifyConfig type is absent from inspectConfig.
-const HIPAA_INFO_TYPES: dlpProtos.google.privacy.dlp.v2.IInfoType[] = [
-  { name: "PERSON_NAME" },
-  { name: "DATE_OF_BIRTH" },
-  { name: "US_SOCIAL_SECURITY_NUMBER" },
-  { name: "PHONE_NUMBER" },
-  { name: "EMAIL_ADDRESS" },
-  { name: "MEDICAL_RECORD_NUMBER" },
-  { name: "US_HEALTHCARE_NPI" },
-  { name: "STREET_ADDRESS" },
-  { name: "US_DEA_NUMBER" },
-  { name: "US_DRIVERS_LICENSE_NUMBER" },
-  { name: "PASSPORT" },
-  { name: "US_BANK_ROUTING_MICR" },
-  { name: "IBAN_CODE" },
-  { name: "CREDIT_CARD_NUMBER" },
-  { name: "IP_ADDRESS" },
-];
-
-// Custom regex info types — belt-and-suspenders for common PHI formats that DLP
-// may score below threshold when appearing in isolation (no surrounding context).
-// Note: Google DLP regex engine uses RE2 — no lookaheads/lookbehinds.
-const HIPAA_CUSTOM_INFO_TYPES: dlpProtos.google.privacy.dlp.v2.ICustomInfoType[] = [
-  {
-    // US phone numbers: (NNN) NNN-NNNN, NNN-NNN-NNNN, NNN.NNN.NNNN, NNN NNN NNNN
-    infoType: { name: "PHONE_NUMBER_REDACTED" },
-    likelihood: dlpProtos.google.privacy.dlp.v2.Likelihood.VERY_LIKELY,
-    regex: { pattern: "(\\([0-9]{3}\\)[ .-]?[0-9]{3}[.-][0-9]{4}|[0-9]{3}[ .-][0-9]{3}[ .-][0-9]{4})" },
-  },
-  {
-    // US SSN with separators: NNN-NN-NNNN or NNN NN NNNN
-    infoType: { name: "SSN_REDACTED" },
-    likelihood: dlpProtos.google.privacy.dlp.v2.Likelihood.VERY_LIKELY,
-    regex: { pattern: "[0-9]{3}[-. ][0-9]{2}[-. ][0-9]{4}" },
-  },
-];
-
-// Per-type replacement labels — maps each info type to a human-friendly redaction token
-const DLP_REPLACEMENTS: Array<{ infoTypes: { name: string }[]; label: string }> = [
-  { infoTypes: [{ name: "PHONE_NUMBER" }, { name: "PHONE_NUMBER_REDACTED" }],          label: "[PHONE_REDACTED]" },
-  { infoTypes: [{ name: "US_SOCIAL_SECURITY_NUMBER" }, { name: "SSN_REDACTED" }],      label: "[SSN_REDACTED]" },
-  { infoTypes: [{ name: "EMAIL_ADDRESS" }],                                             label: "[EMAIL_REDACTED]" },
-  { infoTypes: [{ name: "PERSON_NAME" }],                                               label: "[NAME_REDACTED]" },
-  { infoTypes: [{ name: "DATE_OF_BIRTH" }],                                             label: "[DOB_REDACTED]" },
-  { infoTypes: [{ name: "STREET_ADDRESS" }],                                            label: "[ADDRESS_REDACTED]" },
-  { infoTypes: [{ name: "MEDICAL_RECORD_NUMBER" }],                                     label: "[MRN_REDACTED]" },
-  { infoTypes: [{ name: "US_HEALTHCARE_NPI" }],                                         label: "[NPI_REDACTED]" },
-  { infoTypes: [{ name: "US_DEA_NUMBER" }],                                             label: "[DEA_REDACTED]" },
-  { infoTypes: [{ name: "US_DRIVERS_LICENSE_NUMBER" }],                                 label: "[LICENSE_REDACTED]" },
-  { infoTypes: [{ name: "PASSPORT" }],                                                  label: "[PASSPORT_REDACTED]" },
-  { infoTypes: [{ name: "US_BANK_ROUTING_MICR" }, { name: "IBAN_CODE" }],              label: "[BANK_REDACTED]" },
-  { infoTypes: [{ name: "CREDIT_CARD_NUMBER" }],                                        label: "[CARD_REDACTED]" },
-  { infoTypes: [{ name: "IP_ADDRESS" }],                                                label: "[IP_REDACTED]" },
-];
-
-/** DLP text redaction — replaces PHI tokens inline with [TYPE] placeholders */
-async function dlpRedactText(text: string): Promise<string> {
-  if (!text || text.length < 3) return text;
-  try {
-    const [response] = await dlpClient.deidentifyContent({
-      parent: `projects/${PROJECT_ID}/locations/global`,
-      inspectConfig: {
-        infoTypes: HIPAA_INFO_TYPES,
-        customInfoTypes: HIPAA_CUSTOM_INFO_TYPES,
-        minLikelihood: dlpProtos.google.privacy.dlp.v2.Likelihood.POSSIBLE,
-      },
-      deidentifyConfig: {
-        infoTypeTransformations: {
-          transformations: DLP_REPLACEMENTS.map(({ infoTypes, label }) => ({
-            infoTypes,
-            primitiveTransformation: { replaceConfig: { newValue: { stringValue: label } } },
-          })),
-        },
-      },
-      item: { value: text },
-    });
-    return response.item?.value ?? text;
-  } catch (e) {
-    console.error("[DLP] Text redaction error:", e);
-    throw e; // fail-closed: don't store unredacted PHI
-  }
-}
+// DLP constants and dlpRedactText are imported from ./utils
 
 /**
  * DLP image redaction — two-step:
@@ -201,15 +119,7 @@ async function dlpRedactImage(imageBytes: Buffer): Promise<Buffer> {
   }
 }
 
-/** Strip query-string parameters from a URL (removes potential PHI in query params) */
-function stripQueryParams(url: string): string {
-  try {
-    const u = new URL(url);
-    return u.origin + u.pathname;
-  } catch {
-    return url.split("?")[0];
-  }
-}
+// stripQueryParams imported from ./utils
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -1669,3 +1579,6 @@ export const onAuditLogCreated = functions.firestore.onDocumentCreated(
     console.log(`[onAuditLogCreated] Archived ${logId} → gs://${AUDIT_ARCHIVE_BUCKET}/${path}`);
   }
 );
+
+// ── MCP Server ────────────────────────────────────────────────────────────────
+export { mcp } from "./mcp";

@@ -20,7 +20,7 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { PhotoIcon, VideoCameraIcon, CursorArrowRaysIcon, RectangleStackIcon, CommandLineIcon, ShieldCheckIcon } from '@heroicons/react/24/outline';
+import { PhotoIcon, VideoCameraIcon, CursorArrowRaysIcon, RectangleStackIcon, CommandLineIcon, ShieldCheckIcon, CpuChipIcon } from '@heroicons/react/24/outline';
 import type { SnapSubmission, SnapPlugin } from '../types';
 import { STATUS_OPTIONS, PRIORITY_OPTIONS, CAPTURE_TYPE_LABELS } from '../config/constants';
 
@@ -30,6 +30,7 @@ const CAPTURE_ICONS: Record<string, React.ReactNode> = {
   element_pin: <CursorArrowRaysIcon className="h-3.5 w-3.5" />,
   screen_recording: <VideoCameraIcon className="h-3.5 w-3.5" />,
   console_errors: <CommandLineIcon className="h-3.5 w-3.5" />,
+  ai_submission: <CpuChipIcon className="h-3.5 w-3.5" />,
 };
 
 const COLUMN_STYLES: Record<string, { bg: string; headerBg: string; border: string; count: string }> = {
