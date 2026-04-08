@@ -27,23 +27,6 @@ const ALLOWED_PRIORITIES = ["low", "medium", "high", "critical"] as const;
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
-/**
- * Looks up an API key across all tenants via a collection group query.
- * Returns the owning tenantId if the key is active, null otherwise.
- */
-async function validateApiKey(rawKey: string): Promise<string | null> {
-  if (!rawKey || !rawKey.startsWith("sk_")) return null;
-  const snap = await db.collectionGroup("api_keys")
-    .where("keyHash", "==", rawKey)
-    .where("status", "==", "active")
-    .limit(1)
-    .get();
-  if (snap.empty) return null;
-  // Parent path: tenants/{tenantId}/api_keys/{keyId} → parent.parent = tenants/{tenantId}
-  const tenantId = snap.docs[0].ref.parent.parent?.id;
-  return tenantId ?? null;
-}
-
 // ── Screenshot upload helpers ─────────────────────────────────────────────────
 
 /**
@@ -466,17 +449,10 @@ export const mcp = functions.https.onRequest(
       return;
     }
 
-    // Validate API key from Authorization header
-    const authHeader = (req.headers.authorization as string) || "";
-    const rawKey = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
-    if (!rawKey) {
-      res.status(401).json({ error: "Missing Authorization header. Expected: Bearer sk_..." });
-      return;
-    }
-
-    const tenantId = await validateApiKey(rawKey);
+    // tenantId is required as a query parameter: ?tid=<tenantId>
+    const tenantId = (req.query.tid as string) || "";
     if (!tenantId) {
-      res.status(401).json({ error: "Invalid or revoked API key" });
+      res.status(400).json({ error: "Missing required query parameter: tid (tenantId)" });
       return;
     }
 
