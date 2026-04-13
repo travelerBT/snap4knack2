@@ -52,9 +52,8 @@ const CAPTURE_ICONS: Record<string, React.ReactNode> = {
 };
 
 export default function SnapFeed() {
-  const { user, sharedPluginAccess } = useAuth();
+  const { user } = useAuth();
   const tenantId = user?.uid || '';
-  const [feedMode, setFeedMode] = useState<'mine' | 'shared'>('mine');
 
   const [liveItems, setLiveItems] = useState<SnapSubmission[]>([]);
   const [moreItems, setMoreItems] = useState<SnapSubmission[]>([]);
@@ -62,6 +61,7 @@ export default function SnapFeed() {
   const [lastMoreDoc, setLastMoreDoc] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
   const [plugins, setPlugins] = useState<SnapPlugin[]>([]);
   const [connections, setConnections] = useState<Connection[]>([]);
+  const [sharedPluginInfos, setSharedPluginInfos] = useState<TenantShare[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
@@ -81,12 +81,18 @@ export default function SnapFeed() {
   useEffect(() => {
     if (!tenantId) return;
     const loadMeta = async () => {
-      const [pluginSnap, connSnap] = await Promise.all([
+      const [pluginSnap, connSnap, shareSnap] = await Promise.all([
         getDocs(collection(db, 'tenants', tenantId, 'snapPlugins')),
         getDocs(collection(db, 'tenants', tenantId, 'connections')),
+        getDocs(query(collection(db, 'tenant_shares'), where('grantedTenantId', '==', tenantId))),
       ]);
       setPlugins(pluginSnap.docs.map((d) => ({ id: d.id, ...d.data() } as SnapPlugin)));
       setConnections(connSnap.docs.map((d) => ({ id: d.id, ...d.data() } as Connection)));
+      setSharedPluginInfos(
+        shareSnap.docs
+          .filter((d) => d.data().status === 'active')
+          .map((d) => ({ id: d.id, ...d.data() } as TenantShare))
+      );
     };
     loadMeta();
   }, [tenantId]);
@@ -98,16 +104,22 @@ export default function SnapFeed() {
     setMoreItems([]);
     setLastMoreDoc(null);
 
+    const isSharedPlugin = !!pluginFilter && sharedPluginInfos.some((s) => s.pluginId === pluginFilter);
+
     const constraints: Parameters<typeof query>[1][] = [
-      where('tenantId', '==', tenantId),
+      ...(isSharedPlugin
+        ? [where('pluginId', '==', pluginFilter)]
+        : [
+            where('tenantId', '==', tenantId),
+            ...(pluginFilter ? [where('pluginId', '==', pluginFilter)] : []),
+          ]),
       orderBy('createdAt', 'desc'),
       limit(PAGE_SIZE),
     ];
-    if (pluginFilter) constraints.push(where('pluginId', '==', pluginFilter));
     if (statusFilter) constraints.push(where('status', '==', statusFilter));
     if (typeFilter) constraints.push(where('type', '==', typeFilter));
     if (priorityFilter) constraints.push(where('priority', '==', priorityFilter));
-    if (sourceFilter) constraints.push(where('source', '==', sourceFilter));
+    if (sourceFilter && !isSharedPlugin) constraints.push(where('source', '==', sourceFilter));
 
     const q = query(collection(db, 'snap_submissions'), ...constraints);
     const unsub = onSnapshot(q, (snap) => {
@@ -121,24 +133,30 @@ export default function SnapFeed() {
     });
     return unsub;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenantId, pluginFilter, statusFilter, typeFilter, priorityFilter, sourceFilter]);
+  }, [tenantId, pluginFilter, statusFilter, typeFilter, priorityFilter, sourceFilter, sharedPluginInfos]);
 
   const handleLoadMore = async () => {
     const cursor = lastMoreDoc ?? lastLiveDoc;
     if (!cursor || loadingMore) return;
     setLoadingMore(true);
 
+    const isSharedPlugin = !!pluginFilter && sharedPluginInfos.some((s) => s.pluginId === pluginFilter);
+
     const constraints: Parameters<typeof query>[1][] = [
-      where('tenantId', '==', tenantId),
+      ...(isSharedPlugin
+        ? [where('pluginId', '==', pluginFilter)]
+        : [
+            where('tenantId', '==', tenantId),
+            ...(pluginFilter ? [where('pluginId', '==', pluginFilter)] : []),
+          ]),
       orderBy('createdAt', 'desc'),
       limit(PAGE_SIZE),
       startAfter(cursor),
     ];
-    if (pluginFilter) constraints.push(where('pluginId', '==', pluginFilter));
     if (statusFilter) constraints.push(where('status', '==', statusFilter));
     if (typeFilter) constraints.push(where('type', '==', typeFilter));
     if (priorityFilter) constraints.push(where('priority', '==', priorityFilter));
-    if (sourceFilter) constraints.push(where('source', '==', sourceFilter));
+    if (sourceFilter && !isSharedPlugin) constraints.push(where('source', '==', sourceFilter));
 
     const q = query(collection(db, 'snap_submissions'), ...constraints);
     const snap = await getDocs(q);
@@ -223,8 +241,7 @@ export default function SnapFeed() {
       <div className="mb-6">
         <div className="sm:flex sm:items-center sm:justify-between">
           <h1 className="text-2xl font-bold text-gray-900">Snap Feed</h1>
-          {feedMode === 'mine' && (
-            <div className="flex items-center gap-3 mt-2 sm:mt-0">
+          <div className="flex items-center gap-3 mt-2 sm:mt-0">
               <p className="text-sm text-gray-500">{submissions.length} submission{submissions.length !== 1 ? 's' : ''} loaded</p>
               {/* View toggle */}
               <div className="flex rounded-lg border border-gray-200 overflow-hidden">
@@ -244,27 +261,8 @@ export default function SnapFeed() {
                 </button>
               </div>
             </div>
-          )}
         </div>
-        {sharedPluginAccess.length > 0 && (
-          <div className="flex mt-4 rounded-lg border border-gray-200 overflow-hidden w-fit">
-            <button
-              onClick={() => setFeedMode('mine')}
-              className={`px-5 py-2 text-sm font-medium transition-colors ${feedMode === 'mine' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
-            >
-              My Feeds
-            </button>
-            <button
-              onClick={() => setFeedMode('shared')}
-              className={`px-5 py-2 text-sm font-medium border-l border-gray-200 transition-colors ${feedMode === 'shared' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
-            >
-              Shared Feeds
-            </button>
-          </div>
-        )}
       </div>
-
-      {feedMode === 'shared' ? <SharedFeed /> : <>
 
       {/* Filter bar */}
       <div className="bg-white shadow rounded-lg p-4 mb-6">
@@ -289,7 +287,20 @@ export default function SnapFeed() {
               className="pl-9 block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
             >
               <option value="">All Connections</option>
-              {plugins.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              {plugins.length > 0 && (
+                <optgroup label="My Plugins">
+                  {plugins.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </optgroup>
+              )}
+              {sharedPluginInfos.length > 0 && (
+                <optgroup label="Shared with me">
+                  {sharedPluginInfos.map((s) => (
+                    <option key={s.pluginId} value={s.pluginId}>
+                      {s.pluginName} · {s.ownerCompanyName}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
             </select>
           </div>
           {/* Status */}
@@ -408,40 +419,42 @@ export default function SnapFeed() {
           )}
         </>
       )}
-      </>}
+
+      {/* Inline shared-plugin snaps — shown when no plugin filter is active */}
+      {!pluginFilter && sharedPluginInfos.length > 0 && (
+        <SharedFeedSection
+          shares={sharedPluginInfos}
+          statusFilter={statusFilter}
+          typeFilter={typeFilter}
+          priorityFilter={priorityFilter}
+          search={search}
+        />
+      )}
     </div>
   );
 }
 
-// ── Shared Feed ───────────────────────────────────────────────────────────────
+// ── Shared Feed Section (inline, driven by parent filter state) ──────────────────
 
-function SharedFeed() {
+function SharedFeedSection({
+  shares,
+  statusFilter,
+  typeFilter,
+  priorityFilter,
+  search,
+}: {
+  shares: TenantShare[];
+  statusFilter: string;
+  typeFilter: string;
+  priorityFilter: string;
+  search: string;
+}) {
   const { user } = useAuth();
-  const [shares, setShares] = useState<TenantShare[]>([]);
   const [liveItems, setLiveItems] = useState<SnapSubmission[]>([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<'list' | 'kanban'>(
     () => (localStorage.getItem('s4k_feed_view') as 'list' | 'kanban') || 'kanban'
   );
-
-  const [search, setSearch] = useState('');
-  const [pluginFilter, setPluginFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [typeFilter, setTypeFilter] = useState('');
-  const [priorityFilter, setPriorityFilter] = useState('');
-
-  // Load TenantShare docs where this user is the grantee
-  useEffect(() => {
-    if (!user?.uid) return;
-    getDocs(
-      query(collection(db, 'tenant_shares'), where('grantedTenantId', '==', user.uid))
-    ).then((snap) => {
-      const active = snap.docs
-        .filter((d) => d.data().status === 'active')
-        .map((d) => ({ id: d.id, ...d.data() } as TenantShare));
-      setShares(active);
-    });
-  }, [user?.uid]);
 
   // One real-time listener per shared pluginId, re-subscribes on filter changes
   useEffect(() => {
@@ -492,7 +505,6 @@ function SharedFeed() {
 
   const filtered = useMemo(() => {
     let items = liveItems;
-    if (pluginFilter) items = items.filter((s) => s.pluginId === pluginFilter);
     if (!search.trim()) return items;
     const q = search.toLowerCase();
     return items.filter(
@@ -501,7 +513,7 @@ function SharedFeed() {
         sub.formData?.category?.toLowerCase().includes(q) ||
         sub.formData?.description?.toLowerCase().includes(q)
     );
-  }, [liveItems, pluginFilter, search]);
+  }, [liveItems, search]);
 
   // Group by owner for list view
   const grouped = useMemo(() => {
@@ -548,95 +560,41 @@ function SharedFeed() {
 
   if (loading) {
     return (
-      <div className="space-y-3">
-        {[...Array(6)].map((_, i) => <div key={i} className="h-20 bg-gray-200 rounded-lg animate-pulse" />)}
+      <div className="mt-8 space-y-3">
+        <div className="flex items-center gap-2 mb-2 px-1">
+          <UsersIcon className="h-4 w-4 text-indigo-400" />
+          <span className="text-sm font-semibold text-gray-700">Shared with me</span>
+        </div>
+        {[...Array(3)].map((_, i) => <div key={i} className="h-20 bg-gray-200 rounded-lg animate-pulse" />)}
       </div>
     );
   }
 
-  if (shares.length === 0) {
-    return (
-      <div className="text-center py-20 bg-white shadow rounded-lg">
-        <UsersIcon className="h-12 w-12 text-gray-300 mx-auto" />
-        <p className="mt-3 text-base font-medium text-gray-900">No shared feeds yet</p>
-        <p className="mt-1 text-sm text-gray-500">When another tenant shares their snap feed with you, it will appear here.</p>
-      </div>
-    );
-  }
+  if (filtered.length === 0) return null;
 
   return (
-    <div>
-      {/* Controls row */}
-      <div className="sm:flex sm:items-center sm:justify-between mb-4">
-        <p className="text-sm text-gray-500">{filtered.length} submission{filtered.length !== 1 ? 's' : ''}</p>
-        <div className="flex rounded-lg border border-gray-200 overflow-hidden mt-2 sm:mt-0">
+    <div className="mt-8">
+      {/* Section header */}
+      <div className="flex items-center gap-2 mb-3 px-1">
+        <UsersIcon className="h-4 w-4 text-indigo-400 flex-shrink-0" />
+        <h2 className="text-sm font-semibold text-gray-700">Shared with me</h2>
+        <span className="ml-auto text-xs text-gray-400">{filtered.length} snap{filtered.length !== 1 ? 's' : ''}</span>
+        {/* View toggle */}
+        <div className="flex rounded-lg border border-gray-200 overflow-hidden">
           <button
             onClick={() => { setView('list'); localStorage.setItem('s4k_feed_view', 'list'); }}
-            className={`p-1.5 ${view === 'list' ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
+            className={`p-1 ${view === 'list' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
             title="List view"
           >
-            <ListBulletIcon className="h-5 w-5" />
+            <ListBulletIcon className="h-4 w-4" />
           </button>
           <button
             onClick={() => { setView('kanban'); localStorage.setItem('s4k_feed_view', 'kanban'); }}
-            className={`p-1.5 ${view === 'kanban' ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
+            className={`p-1 ${view === 'kanban' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
             title="Kanban view"
           >
-            <Squares2X2Icon className="h-5 w-5" />
+            <Squares2X2Icon className="h-4 w-4" />
           </button>
-        </div>
-      </div>
-
-      {/* Filter bar */}
-      <div className="bg-white shadow rounded-lg p-4 mb-6">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          <div className="relative">
-            <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search…"
-              className="pl-9 block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-            />
-          </div>
-          <div className="relative">
-            <FunnelIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <select
-              value={pluginFilter}
-              onChange={(e) => setPluginFilter(e.target.value)}
-              className="pl-9 block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-            >
-              <option value="">All shared feeds</option>
-              {shares.map((s) => (
-                <option key={s.pluginId} value={s.pluginId}>{s.pluginName} ({s.ownerCompanyName})</option>
-              ))}
-            </select>
-          </div>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-          >
-            <option value="">All statuses</option>
-            {STATUS_OPTIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
-          </select>
-          <select
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
-            className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-          >
-            <option value="">All types</option>
-            {Object.entries(CAPTURE_TYPE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-          </select>
-          <select
-            value={priorityFilter}
-            onChange={(e) => setPriorityFilter(e.target.value)}
-            className="block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-          >
-            <option value="">All priorities</option>
-            {PRIORITY_OPTIONS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}
-          </select>
         </div>
       </div>
 
