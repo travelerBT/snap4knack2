@@ -18,6 +18,102 @@ export const ALL_TAGS = ['Release Notes', 'Product', 'Engineering', 'HIPAA', 'AI
 
 export const blogPosts: BlogPost[] = [
   {
+    slug: 'release-notes-april-2026',
+    title: 'Release Notes — Unified Shared Feed, Google Sign-In & Security Hardening',
+    date: '2026-04-13',
+    tags: ['Release Notes', 'Product', 'Engineering'],
+    summary:
+      'Shared plugins now appear directly in the Snap Feed alongside your own — no separate tab. Google Sign-In is live for existing accounts, and two high-severity security vulnerabilities have been patched.',
+    content: [
+      {
+        type: 'paragraph',
+        text: 'This release is focused on reducing friction for users who work across multiple accounts, improving sign-in options, and closing security gaps identified during an internal audit.',
+      },
+      { type: 'divider' },
+
+      { type: 'h2', text: '🔗 Unified Shared Feed' },
+      {
+        type: 'paragraph',
+        text: 'Previously, snaps shared with you by another tenant lived behind a separate "Shared Feeds" tab — a second place to check, with its own filter bar. That separation is gone. Shared plugins now show up directly in the main Snap Feed alongside everything else.',
+      },
+      {
+        type: 'ul',
+        items: [
+          'The Connections dropdown now groups plugins into "My Plugins" and "Shared with me". Each shared plugin is labelled with the owning company name — for example, "Bug Tracker · Acme Corp".',
+          'Selecting a shared plugin from the dropdown filters the feed to that plugin\'s snaps, exactly like selecting one of your own.',
+          'When "All Connections" is selected, a "Shared with me" section appears below your own snaps, respecting the same status, type, priority, and search filters from the single filter bar.',
+          'Status, priority, and kanban controls work identically on shared snaps — no capability differences.',
+        ],
+      },
+      {
+        type: 'callout',
+        variant: 'info',
+        text: 'Sharing is still managed on the Connections page. Nothing changes there — the improvement is purely on the receiving end.',
+      },
+
+      { type: 'divider' },
+
+      { type: 'h2', text: '🔐 Google Sign-In' },
+      {
+        type: 'paragraph',
+        text: 'The login page now includes a "Sign in with Google" button. This is available to any existing Snap4Knack account whose email matches a Google account.',
+      },
+      {
+        type: 'ul',
+        items: [
+          'Google Sign-In only works for existing accounts — it cannot be used to create a new Snap4Knack account. New accounts must be provisioned by an administrator.',
+          'If you attempt to sign in with a Google account that has no linked Snap4Knack account, the sign-in is rejected immediately with a clear error message and the Google session is revoked.',
+          'Closing the Google sign-in popup is handled silently — no error message is shown.',
+        ],
+      },
+      {
+        type: 'callout',
+        variant: 'info',
+        text: 'To use Google Sign-In, the email on your Snap4Knack account must exactly match your Google account email.',
+      },
+
+      { type: 'divider' },
+
+      { type: 'h2', text: '🛡️ Security Fixes' },
+      {
+        type: 'paragraph',
+        text: 'Two high-severity issues identified during an internal security audit have been patched and are live in production.',
+      },
+      { type: 'h3', text: 'Privilege escalation via user document self-write (H-1)' },
+      {
+        type: 'paragraph',
+        text: 'Any authenticated user was previously able to overwrite their own Firestore user document in its entirety — including the roles, clientAccess, sharedPluginAccess, and tenantId fields. A malicious user could have escalated their own account to admin or tenant status with a direct Firestore write.',
+      },
+      {
+        type: 'paragraph',
+        text: 'The fix splits the write permission into explicit rules. Admins retain full write access. All other users are now restricted to updating only five safe fields: displayName, notifyOnSnap, notifyOnComment, lastLogin, and tosAcceptedAt. All role and access changes continue to flow exclusively through Cloud Functions using the Firebase Admin SDK.',
+      },
+      { type: 'h3', text: 'Legacy storage path world-readable and writable (H-2)' },
+      {
+        type: 'paragraph',
+        text: 'An early development Storage path had no tenant ownership check. Any signed-in user could read, upload to, or delete files on that path — including files belonging to other tenants. The path is no longer used in production; all screenshots and recordings now live under tenant-scoped paths. The legacy path has been fully blocked.',
+      },
+      {
+        type: 'callout',
+        variant: 'success',
+        text: 'Both fixes are live. No action is required from tenants or users.',
+      },
+
+      { type: 'divider' },
+
+      { type: 'h2', text: '⚙️ Under the Hood' },
+      {
+        type: 'ul',
+        items: [
+          'SnapFeed now loads tenant_shares in the same meta effect as plugins and connections — one round trip instead of two separate component trees.',
+          'Shared plugin queries use where(\'pluginId\', \'==\', ...) without a tenantId constraint, which is required because the snaps belong to the owning tenant\'s account.',
+          'Content Security Policy updated to allow apis.google.com and accounts.google.com, required for the Google Sign-In popup flow.',
+          'The "My Feeds / Shared Feeds" toggle and its duplicate filter bar have been removed — net reduction of ~130 lines.',
+        ],
+      },
+    ],
+  },
+  {
     slug: 'ai-agent-mcp-integration',
     title: 'AI Agents Can Now File Snaps Automatically with the Snap4Knack MCP Server',
     date: '2026-04-07',
