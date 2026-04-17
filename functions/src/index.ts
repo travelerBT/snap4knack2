@@ -8,8 +8,7 @@ import { DlpServiceClient, protos as dlpProtos } from "@google-cloud/dlp";
 import sgMail from "@sendgrid/mail";
 import axios from "axios";
 import { randomUUID } from "crypto";
-import { snapNotificationEmail, criticalSnapEmail, clientInvitationEmail, commentNotificationEmail, submitterStatusUpdateEmail, newTenantWelcomeEmail, sharedFeedEmail } from "./emailTemplates";
-import { HIPAA_INFO_TYPES, HIPAA_CUSTOM_INFO_TYPES, dlpRedactText, stripQueryParams } from "./utils";
+import { snapNotificationEmail, criticalSnapEmail, clientInvitationEmail, commentNotificationEmail, newTenantWelcomeEmail } from "./emailTemplates";
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -29,7 +28,90 @@ const SENDGRID_FROM = "info@finemountainconsulting.com";
 // gRPC status code 6 = ALREADY_EXISTS (used when creating Secret Manager secrets)
 const SECRET_ALREADY_EXISTS = 6;
 
-// DLP constants and dlpRedactText are imported from ./utils
+// HIPAA infoTypes scanned in both text and images.
+// IMPORTANT: every built-in type referenced in DLP_REPLACEMENTS below MUST appear here —
+// Google DLP rejects deidentifyContent calls where a deidentifyConfig type is absent from inspectConfig.
+const HIPAA_INFO_TYPES: dlpProtos.google.privacy.dlp.v2.IInfoType[] = [
+  { name: "PERSON_NAME" },
+  { name: "DATE_OF_BIRTH" },
+  { name: "US_SOCIAL_SECURITY_NUMBER" },
+  { name: "PHONE_NUMBER" },
+  { name: "EMAIL_ADDRESS" },
+  { name: "MEDICAL_RECORD_NUMBER" },
+  { name: "US_HEALTHCARE_NPI" },
+  { name: "STREET_ADDRESS" },
+  { name: "US_DEA_NUMBER" },
+  { name: "US_DRIVERS_LICENSE_NUMBER" },
+  { name: "PASSPORT" },
+  { name: "US_BANK_ROUTING_MICR" },
+  { name: "IBAN_CODE" },
+  { name: "CREDIT_CARD_NUMBER" },
+  { name: "IP_ADDRESS" },
+];
+
+// Custom regex info types — belt-and-suspenders for common PHI formats that DLP
+// may score below threshold when appearing in isolation (no surrounding context).
+// Note: Google DLP regex engine uses RE2 — no lookaheads/lookbehinds.
+const HIPAA_CUSTOM_INFO_TYPES: dlpProtos.google.privacy.dlp.v2.ICustomInfoType[] = [
+  {
+    // US phone numbers: (NNN) NNN-NNNN, NNN-NNN-NNNN, NNN.NNN.NNNN, NNN NNN NNNN
+    infoType: { name: "PHONE_NUMBER_REDACTED" },
+    likelihood: dlpProtos.google.privacy.dlp.v2.Likelihood.VERY_LIKELY,
+    regex: { pattern: "(\\([0-9]{3}\\)[ .-]?[0-9]{3}[.-][0-9]{4}|[0-9]{3}[ .-][0-9]{3}[ .-][0-9]{4})" },
+  },
+  {
+    // US SSN with separators: NNN-NN-NNNN or NNN NN NNNN
+    infoType: { name: "SSN_REDACTED" },
+    likelihood: dlpProtos.google.privacy.dlp.v2.Likelihood.VERY_LIKELY,
+    regex: { pattern: "[0-9]{3}[-. ][0-9]{2}[-. ][0-9]{4}" },
+  },
+];
+
+// Per-type replacement labels — maps each info type to a human-friendly redaction token
+const DLP_REPLACEMENTS: Array<{ infoTypes: { name: string }[]; label: string }> = [
+  { infoTypes: [{ name: "PHONE_NUMBER" }, { name: "PHONE_NUMBER_REDACTED" }],          label: "[PHONE_REDACTED]" },
+  { infoTypes: [{ name: "US_SOCIAL_SECURITY_NUMBER" }, { name: "SSN_REDACTED" }],      label: "[SSN_REDACTED]" },
+  { infoTypes: [{ name: "EMAIL_ADDRESS" }],                                             label: "[EMAIL_REDACTED]" },
+  { infoTypes: [{ name: "PERSON_NAME" }],                                               label: "[NAME_REDACTED]" },
+  { infoTypes: [{ name: "DATE_OF_BIRTH" }],                                             label: "[DOB_REDACTED]" },
+  { infoTypes: [{ name: "STREET_ADDRESS" }],                                            label: "[ADDRESS_REDACTED]" },
+  { infoTypes: [{ name: "MEDICAL_RECORD_NUMBER" }],                                     label: "[MRN_REDACTED]" },
+  { infoTypes: [{ name: "US_HEALTHCARE_NPI" }],                                         label: "[NPI_REDACTED]" },
+  { infoTypes: [{ name: "US_DEA_NUMBER" }],                                             label: "[DEA_REDACTED]" },
+  { infoTypes: [{ name: "US_DRIVERS_LICENSE_NUMBER" }],                                 label: "[LICENSE_REDACTED]" },
+  { infoTypes: [{ name: "PASSPORT" }],                                                  label: "[PASSPORT_REDACTED]" },
+  { infoTypes: [{ name: "US_BANK_ROUTING_MICR" }, { name: "IBAN_CODE" }],              label: "[BANK_REDACTED]" },
+  { infoTypes: [{ name: "CREDIT_CARD_NUMBER" }],                                        label: "[CARD_REDACTED]" },
+  { infoTypes: [{ name: "IP_ADDRESS" }],                                                label: "[IP_REDACTED]" },
+];
+
+/** DLP text redaction — replaces PHI tokens inline with [TYPE] placeholders */
+async function dlpRedactText(text: string): Promise<string> {
+  if (!text || text.length < 3) return text;
+  try {
+    const [response] = await dlpClient.deidentifyContent({
+      parent: `projects/${PROJECT_ID}/locations/global`,
+      inspectConfig: {
+        infoTypes: HIPAA_INFO_TYPES,
+        customInfoTypes: HIPAA_CUSTOM_INFO_TYPES,
+        minLikelihood: dlpProtos.google.privacy.dlp.v2.Likelihood.POSSIBLE,
+      },
+      deidentifyConfig: {
+        infoTypeTransformations: {
+          transformations: DLP_REPLACEMENTS.map(({ infoTypes, label }) => ({
+            infoTypes,
+            primitiveTransformation: { replaceConfig: { newValue: { stringValue: label } } },
+          })),
+        },
+      },
+      item: { value: text },
+    });
+    return response.item?.value ?? text;
+  } catch (e) {
+    console.error("[DLP] Text redaction error:", e);
+    throw e; // fail-closed: don't store unredacted PHI
+  }
+}
 
 /**
  * DLP image redaction — two-step:
@@ -119,7 +201,15 @@ async function dlpRedactImage(imageBytes: Buffer): Promise<Buffer> {
   }
 }
 
-// stripQueryParams imported from ./utils
+/** Strip query-string parameters from a URL (removes potential PHI in query params) */
+function stripQueryParams(url: string): string {
+  try {
+    const u = new URL(url);
+    return u.origin + u.pathname;
+  } catch {
+    return url.split("?")[0];
+  }
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -299,27 +389,44 @@ export const fetchKnackRoles = functions.https.onCall(
     }
 
     const apiKey = await getKnackApiKey(secretName);
+    const knackHeaders = { "X-Knack-Application-Id": appId, "X-Knack-REST-API-Key": apiKey };
 
-    // Fetch all objects (fields are NOT included in this response)
-    const res = await axios.get(`https://api.knack.com/v1/objects`, {
-      headers: { "X-Knack-Application-Id": appId, "X-Knack-REST-API-Key": apiKey },
-    });
+    // Fetch ALL objects, walking pagination (Knack defaults to 25 per page)
+    const rawObjects: Array<{ key: string; name: string }> = [];
+    let page = 1;
+    while (true) {
+      const res = await axios.get(`https://api.knack.com/v1/objects`, {
+        headers: knackHeaders,
+        params: { rows_per_page: 100, current_page: page },
+      });
+      const pageObjects: Array<{ key: string; name: string }> = res.data.objects || [];
+      rawObjects.push(...pageObjects);
+      const totalPages: number = res.data.total_pages ?? 1;
+      if (page >= totalPages) break;
+      page++;
+    }
 
-    const rawObjects: Array<{ key: string; name: string }> = res.data.objects || [];
-
-    // Fetch fields for every object — /v1/objects doesn't include them
-    const withFields = await Promise.all(
-      rawObjects.map(async (obj) => {
-        try {
-          const fRes = await axios.get(`https://api.knack.com/v1/objects/${obj.key}/fields`, {
-            headers: { "X-Knack-Application-Id": appId, "X-Knack-REST-API-Key": apiKey },
-          });
-          return { ...obj, fields: (fRes.data.fields || []) as Array<{ type: string }> };
-        } catch {
-          return { ...obj, fields: [] as Array<{ type: string }> };
-        }
-      })
-    );
+    // Fetch fields for every object in small batches to avoid rate limits
+    // /v1/objects doesn't include fields; a 'password' type field marks a role table
+    const BATCH = 5;
+    const withFields: Array<{ key: string; name: string; fields: Array<{ type: string }> }> = [];
+    for (let i = 0; i < rawObjects.length; i += BATCH) {
+      const batch = rawObjects.slice(i, i + BATCH);
+      const results = await Promise.all(
+        batch.map(async (obj) => {
+          try {
+            const fRes = await axios.get(`https://api.knack.com/v1/objects/${obj.key}/fields`, {
+              headers: knackHeaders,
+              params: { rows_per_page: 200 },
+            });
+            return { ...obj, fields: (fRes.data.fields || []) as Array<{ type: string }> };
+          } catch {
+            return { ...obj, fields: [] as Array<{ type: string }> };
+          }
+        })
+      );
+      withFields.push(...results);
+    }
 
     // Role tables have a 'password' type field
     const roles = withFields
@@ -327,11 +434,12 @@ export const fetchKnackRoles = functions.https.onCall(
       .map((obj) => ({ key: obj.key, name: obj.name }));
 
     const objects = rawObjects.map((obj) => ({ key: obj.key, name: obj.name }));
+
     // Fetch app name
     let appName = "";
     try {
       const appRes = await axios.get(`https://api.knack.com/v1/application`, {
-        headers: { "X-Knack-Application-Id": appId, "X-Knack-REST-API-Key": apiKey },
+        headers: knackHeaders,
       });
       appName = appRes.data?.application?.name || appRes.data?.name || "";
     } catch {
@@ -463,17 +571,14 @@ export const issueWidgetToken = functions.https.onRequest(
     if (req.method === "OPTIONS") { res.status(204).send(""); return; }
     if (req.method !== "POST") { res.status(405).json({ error: "Method not allowed" }); return; }
 
-    const { pluginId, tenantId, knackUserId, knackUserRole, userId, userRole } = req.body as {
+    const { pluginId, tenantId, knackUserId, knackUserRole, knackUserRoles, userId, userRole } = req.body as {
       pluginId: string; tenantId: string;
-      // Knack path
-      knackUserId?: string; knackUserRole?: string;
-      // React/Firebase path
-      userId?: string; userRole?: string;
+      knackUserId?: string; knackUserRole?: string; knackUserRoles?: string[];
+      userId?: string; userRole?: string; // React embed path
     };
 
-    // Either knackUserId (Knack) or userId (React) must be present
-    const isReact = !!userId;
-    const effectiveUserId = isReact ? userId! : knackUserId;
+    const effectiveUserId = knackUserId || userId;
+
     if (!pluginId || !tenantId || !effectiveUserId) {
       res.status(400).json({ error: "Missing required widget params." }); return;
     }
@@ -484,27 +589,29 @@ export const issueWidgetToken = functions.https.onRequest(
       res.status(404).json({ error: "Plugin not found or inactive." }); return;
     }
 
-    // Role check only applies to Knack apps — React/Firebase apps skip it entirely
-    if (!isReact) {
-      const selectedRoles: string[] = pluginDoc.data()?.selectedRoles || [];
-      const allowAll = selectedRoles.length === 0 || selectedRoles.includes("*");
-      if (!allowAll && !selectedRoles.includes(knackUserRole as string)) {
-        res.status(403).json({ error: "User role not authorized for this plugin." }); return;
-      }
+    // Normalise roles: Knack returns "profile_N" from getUserAttributes() but
+    // fetchKnackRoles stores them as "object_N" — map them so they match selectedRoles.
+    // For React embeds, userRole is always 'authenticated'.
+    const normalizeRole = (r: string) => r.replace(/^profile_/, "object_");
+    const rawRoles = (knackUserRoles && knackUserRoles.length ? knackUserRoles : knackUserRole ? [knackUserRole] : userRole ? [userRole] : []);
+    const userRoles = rawRoles.map(normalizeRole).filter(Boolean);
+
+    // Check role is in selectedRoles. Empty array or '*' means allow all authenticated users.
+    const selectedRoles: string[] = pluginDoc.data()?.selectedRoles || [];
+    const allowAll = selectedRoles.length === 0 || selectedRoles.includes("*");
+    const matchedRole = allowAll ? (userRoles[0] || "authenticated") : userRoles.find((r) => selectedRoles.includes(r));
+    if (!allowAll && !matchedRole) {
+      res.status(403).json({ error: "User role not authorized for this plugin." }); return;
     }
 
-    // Issue custom token — encode source so submitSnap can store it on the doc
-    const source = isReact ? "react" : "knack";
+    // Issue custom token tied to the user
     const widgetUid = `widget-${tenantId}-${effectiveUserId}`;
     const token = await auth.createCustomToken(widgetUid, {
       role: "widget",
       snap_tenantId: tenantId,
       snap_pluginId: pluginId,
-      snap_source: source,
-      knackUserId: isReact ? null : knackUserId,
-      knackUserRole: isReact ? null : knackUserRole,
-      userId: isReact ? userId : null,
-      userRole: isReact ? (userRole || "authenticated") : null,
+      knackUserId: effectiveUserId,
+      knackUserRole: matchedRole || "authenticated",
     });
 
     res.json({ token });
@@ -539,7 +646,6 @@ export const submitSnap = functions.https.onRequest(
     const pluginId = (claims.snap_pluginId || claims.pluginId) as string | undefined;
     const knackUserId = claims.knackUserId as string | undefined;
     const knackUserRole = claims.knackUserRole as string | undefined;
-    const source = (claims.snap_source as string | undefined) || "knack"; // 'knack' | 'react'
     if (!tenantId || !pluginId) { res.status(400).json({ error: "Token missing claims" }); return; }
 
     const body = req.body as Record<string, unknown>;
@@ -611,15 +717,6 @@ export const submitSnap = functions.https.onRequest(
       status: "new",
       hipaaEnabled,
       retentionDays,
-      source, // 'knack' | 'react'
-      notifySubmitter: body.notifySubmitter !== false, // submitter's preference; default true
-      submitterEmail: (() => {
-        const ctx = (body.context as Record<string, unknown>) || {};
-        const email = (ctx.userEmail as string) ||
-          (ctx.knackUserEmail as string) ||
-          (typeof ctx.knackUserId === "string" && ctx.knackUserId.includes("@") ? ctx.knackUserId : "");
-        return email || null;
-      })(),
       assignedToUid: tenantId,   // default-assign to plugin owner
       assignedToName: null,      // resolved by the app from tenant profile
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -666,13 +763,14 @@ export const onSnapCreated = functions.firestore.onDocumentCreated(
     const tenantId = snap.tenantId as string;
     const pluginId = snap.pluginId as string;
 
-    const [pluginDoc] = await Promise.all([
+    const [pluginDoc, tenantDoc] = await Promise.all([
       db.collection("tenants").doc(tenantId).collection("snapPlugins").doc(pluginId).get(),
       db.collection("tenants").doc(tenantId).get(),
     ]);
 
     const pluginData = pluginDoc.data();
     const notifyEmails = (pluginData?.snapSettings?.notifyEmails as string[]) || [];
+    const tenantData = tenantDoc.data();
     const priority = snap.priority as string | undefined;
     const isCritical = priority === "critical";
     const hipaaMode = pluginData?.hipaaEnabled === true;
@@ -685,8 +783,7 @@ export const onSnapCreated = functions.firestore.onDocumentCreated(
     const pluginName = he(pluginData?.name || "Plugin");
 
     // ── Email notifications ───────────────────────────────────────────────────
-    const notificationsEnabled = pluginData?.snapSettings?.notificationsEnabled !== false;
-    if (notifyEmails.length > 0 && notificationsEnabled) {
+    if ((isCritical || tenantData?.notifyOnSnap) && notifyEmails.length > 0) {
       const key = await getSendGridKey();
       if (key) {
         sgMail.setApiKey(key);
@@ -937,61 +1034,7 @@ export const onCommentCreated = functions.firestore.onDocumentCreated(
   }
 );
 
-// ── Firestore trigger: notify submitter on status change ─────────────────────
-
-export const onSnapHistoryCreated = functions.firestore.onDocumentCreated(
-  "snap_submissions/{submissionId}/history/{historyId}",
-  async (event) => {
-    const entry = event.data?.data() as Record<string, unknown> | undefined;
-    if (!entry || entry.changeType !== "status") return;
-
-    const submissionId = event.params.submissionId;
-    const submissionDoc = await db.collection("snap_submissions").doc(submissionId).get();
-    if (!submissionDoc.exists) return;
-    const submission = submissionDoc.data()!;
-
-    // Respect the per-snap toggle (default: true when email is present)
-    if (submission.notifySubmitter === false) return;
-
-    // Never email submitters on HIPAA snaps
-    if (submission.hipaaEnabled === true) return;
-
-    // Resolve submitter email: React apps store userEmail; Knack apps may store email as knackUserId
-    const ctx = (submission.context as Record<string, unknown>) || {};
-    const rawEmail = (submission.submitterEmail as string) ||
-      (ctx.userEmail as string) ||
-      (ctx.knackUserEmail as string) ||
-      (typeof ctx.knackUserId === "string" && ctx.knackUserId.includes("@") ? ctx.knackUserId : "");
-    if (!rawEmail) return;
-
-    const tenantId = submission.tenantId as string;
-    const pluginId = submission.pluginId as string;
-    const snapNumber = submission.snapNumber as number | undefined;
-    const category = ((submission.formData as Record<string, unknown>)?.category as string) || "Snap";
-    const pageUrl = (ctx.pageUrl as string) || "";
-
-    const pluginDoc = await db.collection("tenants").doc(tenantId).collection("snapPlugins").doc(pluginId).get();
-    const pluginName = he(pluginDoc.data()?.name || "Plugin");
-
-    const key = await getSendGridKey();
-    if (!key) return;
-    sgMail.setApiKey(key);
-
-    await sgMail.send({
-      from: SENDGRID_FROM,
-      ...submitterStatusUpdateEmail({
-        recipientEmail: rawEmail,
-        pluginName,
-        snapNumber,
-        category: he(category),
-        newStatus: (entry.toValue as string) || "unknown",
-        pageUrl: he(pageUrl),
-      }),
-    });
-  }
-);
-
-// ── shareFeedWithTenant ────────────────────────────────────────────────────────
+// ── shareFeedWithTenant ──────────────────────────────────────────────────────
 
 export const shareFeedWithTenant = functions.https.onCall(
   { enforceAppCheck: false },
@@ -1072,25 +1115,6 @@ export const shareFeedWithTenant = functions.https.onCall(
     await db.collection("users").doc(granteeUid).update({
       sharedPluginAccess: admin.firestore.FieldValue.arrayUnion(pluginId),
     });
-
-    // Notify the grantee by email — non-fatal
-    try {
-      const key = await getSendGridKey();
-      if (key) {
-        sgMail.setApiKey(key);
-        await sgMail.send({
-          from: SENDGRID_FROM,
-          ...sharedFeedEmail({
-            recipientEmail: email,
-            ownerCompanyName,
-            pluginName,
-            feedUrl: `${APP_DOMAIN}/snap-feed`,
-          }),
-        });
-      }
-    } catch {
-      // Email failure is non-fatal — share was already granted
-    }
 
     return { shareId: shareRef.id, grantedEmail: email, grantedCompanyName, pluginName };
   }
@@ -1452,81 +1476,6 @@ export const purgeExpiredSnaps = onSchedule(
   }
 );
 
-// ── deleteSnapPlugin ─────────────────────────────────────────────────────────
-// Deletes a snap plugin and ALL associated snap_submissions (+ their comment
-// subcollections and Storage screenshots). Runs in paginated batches of 400
-// so it never exceeds the Firestore 500-operation batch limit.
-
-export const deleteSnapPlugin = functions.https.onCall(
-  { enforceAppCheck: false },
-  async (request) => {
-    if (!request.auth) throw new functions.https.HttpsError("unauthenticated", "Must be signed in.");
-    const { pluginId, tenantId } = request.data as { pluginId: string; tenantId: string };
-
-    if (!pluginId || !tenantId) {
-      throw new functions.https.HttpsError("invalid-argument", "pluginId and tenantId are required.");
-    }
-    if (request.auth.uid !== tenantId) {
-      throw new functions.https.HttpsError("permission-denied", "Not authorized.");
-    }
-
-    // Verify plugin belongs to this tenant
-    const pluginRef = db.collection("tenants").doc(tenantId).collection("snapPlugins").doc(pluginId);
-    const pluginDoc = await pluginRef.get();
-    if (!pluginDoc.exists) throw new functions.https.HttpsError("not-found", "Plugin not found.");
-    if (pluginDoc.data()?.tenantId !== tenantId) {
-      throw new functions.https.HttpsError("permission-denied", "Not authorized.");
-    }
-
-    const bucket = admin.storage().bucket(STORAGE_BUCKET);
-    let deletedSnaps = 0;
-
-    // Paginated delete of snap_submissions for this plugin
-    let lastDoc: admin.firestore.QueryDocumentSnapshot | null = null;
-    while (true) {
-      let q = db.collection("snap_submissions")
-        .where("tenantId", "==", tenantId)
-        .where("pluginId", "==", pluginId)
-        .limit(400);
-      if (lastDoc) q = q.startAfter(lastDoc);
-
-      const snap = await q.get();
-      if (snap.empty) break;
-
-      const batch = db.batch();
-      for (const snapDoc of snap.docs) {
-        const snapId = snapDoc.id;
-
-        // Delete comment subcollection
-        const commentsSnap = await db.collection("snap_submissions").doc(snapId).collection("comments").get();
-        for (const commentDoc of commentsSnap.docs) {
-          batch.delete(commentDoc.ref);
-        }
-
-        // Delete screenshot from Storage (best-effort — don't fail if missing)
-        try {
-          await bucket.file(`snap_screenshots/${tenantId}/${snapId}.png`).delete();
-        } catch {
-          // file may not exist (e.g. text-only snap)
-        }
-
-        batch.delete(snapDoc.ref);
-        deletedSnaps++;
-      }
-      await batch.commit();
-
-      if (snap.size < 400) break;
-      lastDoc = snap.docs[snap.docs.length - 1];
-    }
-
-    // Finally delete the plugin document itself
-    await pluginRef.delete();
-
-    console.log(`[deleteSnapPlugin] Deleted plugin ${pluginId} and ${deletedSnaps} snap(s) for tenant ${tenantId}`);
-    return { success: true, deletedSnaps };
-  }
-);
-
 // ── onAuditLogCreated ────────────────────────────────────────────────────────────
 // Immutable audit archive — mirrors every audit_log Firestore document to Cloud Storage
 // as a write-once JSON file at audit_archive/{YYYY}/{MM}/{DD}/{logId}.json.
@@ -1579,6 +1528,3 @@ export const onAuditLogCreated = functions.firestore.onDocumentCreated(
     console.log(`[onAuditLogCreated] Archived ${logId} → gs://${AUDIT_ARCHIVE_BUCKET}/${path}`);
   }
 );
-
-// ── MCP Server ────────────────────────────────────────────────────────────────
-export { mcp } from "./mcp";

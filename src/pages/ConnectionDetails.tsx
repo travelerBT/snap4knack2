@@ -36,13 +36,13 @@ export default function ConnectionDetails() {
   }, [tenantId, id]);
 
   const handleSync = async () => {
-    if (!id) return;
+    if (!id || !connection) return;
     setSyncing(true);
     try {
-      const fetchRoles = httpsCallable<{ connectionId: string }, { roles: KnackRole[]; objects: { key: string; name: string }[] }>(
+      const fetchRoles = httpsCallable<{ appId: string; secretName: string }, { roles: KnackRole[]; objects: { key: string; name: string }[] }>(
         functions, 'fetchKnackRoles'
       );
-      const result = await fetchRoles({ connectionId: id });
+      const result = await fetchRoles({ appId: connection.appId, secretName: connection.secretName });
       await updateDoc(doc(db, 'tenants', tenantId, 'connections', id), {
         roles: result.data.roles,
         objects: result.data.objects,

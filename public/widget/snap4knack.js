@@ -180,15 +180,18 @@
 
   // ── Auth: request widget token from Cloud Function ─────────────────────────
 
-  function getWidgetToken(pluginId, tenantId, userId, userRole) {
+  function getWidgetToken(pluginId, tenantId, userId, userRoles) {
     // onRequest — send data directly, response is { token: "..." }
     var body = { pluginId: pluginId, tenantId: tenantId };
     if (state.appSource === 'react') {
       body.userId = userId;
-      body.userRole = userRole || 'authenticated';
+      body.userRole = 'authenticated';
     } else {
       body.knackUserId = userId;
-      body.knackUserRole = userRole;
+      // Send full roles array so the server can check all roles and normalise profile_N→object_N
+      var rolesArr = Array.isArray(userRoles) ? userRoles : (userRoles ? [userRoles] : []);
+      body.knackUserRoles = rolesArr;
+      body.knackUserRole = rolesArr[0] || 'authenticated'; // fallback for older server versions
     }
     return req('POST', FUNCTIONS_BASE + '/issueWidgetToken', body).then(function (resp) {
       // Exchange custom token for Firebase ID token
@@ -248,8 +251,8 @@
     var userId = state.appSource === 'react'
       ? (activeUser.userId || activeUser.userEmail || 'anonymous')
       : (activeUser.id || activeUser.email || 'anonymous');
-    var userRole = state.appSource === 'react' ? 'authenticated' : state.knackRole;
-    return getWidgetToken(state.config.pluginId, state.config.tenantId, userId, userRole)
+    var userRoles = state.appSource === 'react' ? 'authenticated' : (state.knackRoles || state.knackRole);
+    return getWidgetToken(state.config.pluginId, state.config.tenantId, userId, userRoles)
       .then(function (idToken) {
         state.idToken = idToken;
         state.idTokenAcquiredAt = Date.now();
@@ -1430,8 +1433,26 @@
         x2: s.x2, y2: s.y2, text: s.text || null,
       };
     });
+    // Build the most complete URL possible.
+    // Knack uses hash routing internally; location.href captures it on knack.com builder,
+    // but embedded/iframed apps may only show the parent origin. Supplement with Knack's
+    // own router hash so the full page path is always recorded.
+    var pageUrl = global.location.href;
+    try {
+      var knackHash = '';
+      if (global.Knack) {
+        // Knack.router.current is the hash fragment without the '#'
+        knackHash = (global.Knack.router && global.Knack.router.current) ||
+                    (global.Knack.scene && global.Knack.scene.key) || '';
+      }
+      if (knackHash && pageUrl.indexOf(knackHash) === -1) {
+        // Append the hash if it isn't already in the URL
+        var base = pageUrl.split('#')[0];
+        pageUrl = base + '#' + knackHash;
+      }
+    } catch (e) {}
     var context = {
-      pageUrl: global.location.href,
+      pageUrl: pageUrl,
       pageTitle: document.title,
       userAgent: navigator.userAgent,
       viewportWidth: window.innerWidth,
@@ -1598,7 +1619,7 @@
       mounted = true;
       var roles = getRoles(user);
       var knackRole = roles.length ? roles[0] : 'authenticated';
-      // Resolve human-readable role name from Knack app metadata
+      // Resolve human-readable role name from Knack app metadata (use first role for display)
       var knackRoleName = knackRole;
       try {
         var appRoles = (global.Knack.application && global.Knack.application.user_roles) ||
@@ -1609,7 +1630,8 @@
         }
       } catch (e) {}
       state.knackRoleName = knackRoleName;
-      authenticate(user, knackRole);
+      // Pass full roles array so all roles are checked against selectedRoles on the server
+      authenticate(user, roles.length ? roles : 'authenticated');
     }
 
     // Poll every 300ms for Knack to appear (mirrors Chat4Knack approach)
@@ -1649,11 +1671,13 @@
     }, 60000);
   }
 
-  function authenticate(knackUser, knackRole) {
+  function authenticate(knackUser, knackRoles) {
     state.knackUser = knackUser;
-    state.knackRole = knackRole;
+    var rolesArr = Array.isArray(knackRoles) ? knackRoles : (knackRoles ? [knackRoles] : []);
+    state.knackRoles = rolesArr;
+    state.knackRole = rolesArr[0] || 'authenticated';
     var userId = knackUser.id || knackUser.email || 'anonymous';
-    getWidgetToken(state.config.pluginId, state.config.tenantId, userId, knackRole)
+    getWidgetToken(state.config.pluginId, state.config.tenantId, userId, rolesArr)
       .then(function (idToken) {
         state.idToken = idToken;
         state.idTokenAcquiredAt = Date.now();
