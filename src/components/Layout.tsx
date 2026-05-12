@@ -108,7 +108,7 @@ export default function Layout() {
                   className="flex items-center gap-2 text-sm text-gray-700 hover:text-gray-900"
                 >
                   <UserCircleIcon className="h-7 w-7 text-gray-400" />
-                  <span className="font-medium">{tenant?.companyName || user?.displayName || user?.email}</span>
+                  <span className="font-medium">{user?.displayName || user?.email}</span>
                   <ChevronDownIcon className="h-4 w-4 text-gray-400" />
                 </button>
                 {userMenuOpen && (
