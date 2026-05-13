@@ -56,7 +56,7 @@ export default function SnapDetail() {
         where('status', '==', 'active')
       )
     ).then((snap) => {
-      const ownerName = tenant?.companyName || user?.displayName || user?.email || 'Plugin Owner';
+      const ownerName = user?.displayName || user?.email || 'Plugin Owner';
       const list: { uid: string; name: string }[] = [
         { uid: tenantId, name: ownerName },
         ...snap.docs.map((d) => {
