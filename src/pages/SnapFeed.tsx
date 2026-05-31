@@ -69,14 +69,23 @@ export default function SnapFeed() {
     () => (localStorage.getItem('s4k_feed_view') as 'list' | 'kanban') || 'kanban'
   );
 
-  // Filters
-  const [search, setSearch] = useState('');
-  const [pluginFilter, setPluginFilter] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [typeFilter, setTypeFilter] = useState('');
-  const [priorityFilter, setPriorityFilter] = useState('');
-  const [sourceFilter, setSourceFilter] = useState('');
-  const [assignedToMeFilter, setAssignedToMeFilter] = useState(false);
+  // Filters — persisted to localStorage so they survive navigation
+  const [search, setSearch] = useState(() => localStorage.getItem('s4k_filter_search') ?? '');
+  const [pluginFilter, setPluginFilter] = useState(() => localStorage.getItem('s4k_filter_plugin') ?? '');
+  const [statusFilter, setStatusFilter] = useState(() => localStorage.getItem('s4k_filter_status') ?? '');
+  const [typeFilter, setTypeFilter] = useState(() => localStorage.getItem('s4k_filter_type') ?? '');
+  const [priorityFilter, setPriorityFilter] = useState(() => localStorage.getItem('s4k_filter_priority') ?? '');
+  const [sourceFilter, setSourceFilter] = useState(() => localStorage.getItem('s4k_filter_source') ?? '');
+  const [assignedToMeFilter, setAssignedToMeFilter] = useState(() => localStorage.getItem('s4k_filter_assignedToMe') === 'true');
+
+  // Sync filter changes to localStorage
+  useEffect(() => { localStorage.setItem('s4k_filter_search', search); }, [search]);
+  useEffect(() => { localStorage.setItem('s4k_filter_plugin', pluginFilter); }, [pluginFilter]);
+  useEffect(() => { localStorage.setItem('s4k_filter_status', statusFilter); }, [statusFilter]);
+  useEffect(() => { localStorage.setItem('s4k_filter_type', typeFilter); }, [typeFilter]);
+  useEffect(() => { localStorage.setItem('s4k_filter_priority', priorityFilter); }, [priorityFilter]);
+  useEffect(() => { localStorage.setItem('s4k_filter_source', sourceFilter); }, [sourceFilter]);
+  useEffect(() => { localStorage.setItem('s4k_filter_assignedToMe', String(assignedToMeFilter)); }, [assignedToMeFilter]);
 
   useEffect(() => {
     if (!tenantId) return;

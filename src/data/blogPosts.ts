@@ -18,6 +18,119 @@ export const ALL_TAGS = ['Release Notes', 'Product', 'Engineering', 'HIPAA', 'AI
 
 export const blogPosts: BlogPost[] = [
   {
+    slug: 'release-notes-may-2026',
+    title: 'Release Notes — HIPAA Widget Fixes & Persistent Snap Feed Filters',
+    date: '2026-05-31',
+    tags: ['Release Notes', 'Product', 'Engineering', 'HIPAA'],
+    summary:
+      'Three widget bugs affecting HIPAA plugins are resolved: console errors now capture and DLP-redact correctly, submitters can opt in to status-change notifications, and the textarea focus issue is fixed. Snap Feed filters now persist across navigation.',
+    content: [
+      {
+        type: 'paragraph',
+        text: 'This release fixes three bugs that specifically affected HIPAA-enabled plugins, and adds a quality-of-life improvement to the Snap Feed filter bar.',
+      },
+      { type: 'divider' },
+
+      { type: 'h2', text: '🐛 Fix: Textarea Not Focusable in Widget (Intermittent)' },
+      {
+        type: 'paragraph',
+        text: 'Some users reported that clicking into the Description textarea in the snap submission form would not focus the field, making it impossible to type. This was intermittent and harder to reproduce on slower machines.',
+      },
+      {
+        type: 'paragraph',
+        text: 'Root cause: a global pointerdown listener (capture phase) used to detect clicks on the FAB button was calling e.preventDefault() on every pointer event whose coordinates fell within the FAB\'s bounding rect. Because the FAB sits at the bottom-right corner and the drawer also occupies the right side of the screen, the coordinates could overlap — and preventDefault() on pointerdown suppresses the browser\'s default focus-assignment behavior.',
+      },
+      {
+        type: 'ul',
+        items: [
+          'Fix: the pointerdown handler now returns immediately if the drawer is already open. The FAB is not actionable while the drawer is visible, so there is nothing to intercept.',
+          'The fix applies to all capture modes and all plugin types — HIPAA and non-HIPAA alike.',
+        ],
+      },
+
+      { type: 'divider' },
+
+      { type: 'h2', text: '🐛 Fix: HIPAA Plugins Not Capturing Console Errors' },
+      {
+        type: 'paragraph',
+        text: 'The "Include Console" checkbox was hidden for HIPAA-enabled plugins, and the server was stripping all console error data from HIPAA submissions before writing to Firestore. This meant HIPAA users had no way to attach console output to a snap — even when it contained no PHI.',
+      },
+      {
+        type: 'paragraph',
+        text: 'Console logs can be invaluable for bug reports. The restriction was overly broad: the right control is DLP redaction, not omission.',
+      },
+      {
+        type: 'ul',
+        items: [
+          'The "Include Console" checkbox is now shown for HIPAA plugins alongside all other plugin types.',
+          'When the checkbox is checked on a HIPAA submission, the server DLP-redacts each console entry\'s message field using the same Google Cloud DLP pipeline already applied to the description field — scanning for names, SSNs, medical record numbers, dates of birth, and other HIPAA infoTypes.',
+          'Entries that contain no PHI pass through unchanged. Entries with PHI have the sensitive spans replaced with [REDACTED] before being written to Firestore.',
+          'The server-side strip (consoleErrors = hipaaEnabled ? [] : ...) has been removed.',
+        ],
+      },
+      {
+        type: 'callout',
+        variant: 'info',
+        text: 'Console errors are always captured in the browser from the moment the widget mounts — this change only affects whether they are attached to a submission and whether they survive the server write.',
+      },
+
+      { type: 'divider' },
+
+      { type: 'h2', text: '🐛 Fix: HIPAA Plugins Not Allowing Submitter Notifications' },
+      {
+        type: 'paragraph',
+        text: 'The "Notify me when status changes" checkbox was hidden for HIPAA plugin submissions, and even when notifySubmitter: true arrived in the payload the server discarded it. Submitters using HIPAA plugins had no way to receive status-change emails.',
+      },
+      {
+        type: 'ul',
+        items: [
+          'The "Notify me when status changes" checkbox is now shown for HIPAA plugin submissions when the submitter\'s email is available.',
+          'notifySubmitter and submitterEmail are now stored as top-level fields on the snap document at write time.',
+          'A new onSnapStatusUpdated Cloud Function trigger fires whenever a snap\'s status field changes. If the snap has notifySubmitter: true and a submitterEmail, it dispatches a status-update email to the submitter using the existing email template.',
+          'The old onSnapHistoryCreated trigger (which was never wired up to send HIPAA emails) has been removed and replaced by this trigger.',
+        ],
+      },
+      {
+        type: 'callout',
+        variant: 'success',
+        text: 'HIPAA notice emails include a footer reminding the recipient that the notification does not contain patient health information, in line with the existing HIPAA email template pattern.',
+      },
+
+      { type: 'divider' },
+
+      { type: 'h2', text: '💾 Snap Feed Filter Persistence' },
+      {
+        type: 'paragraph',
+        text: 'Previously, navigating away from the Snap Feed and returning would reset all filters — Connection, Status, Type, Priority, Source, and "Assigned to Me" — back to their defaults. This was friction for anyone who works with a consistent filter combination.',
+      },
+      {
+        type: 'ul',
+        items: [
+          'All seven filter values are now saved to localStorage as you change them.',
+          'When you return to the Snap Feed, the filters are restored exactly as you left them.',
+          'The view toggle (list vs. kanban) was already persistent — this release extends the same pattern to the full filter bar.',
+        ],
+      },
+
+      { type: 'divider' },
+
+      { type: 'h2', text: '⚙️ Under the Hood' },
+      {
+        type: 'ul',
+        items: [
+          'Widget (snap4knack.js): global pointerdown guard now short-circuits on state.open.',
+          'Widget: "Include Console" checkbox condition changed from captureType !== MODES.CONSOLE && !hipaaEnabled to captureType !== MODES.CONSOLE.',
+          'Widget: attachConsole read directly from the checkbox element for all plugin types; the hipaaEnabled branch is removed.',
+          'Widget: "Notify me" checkbox condition changed from submitterEmail && !hipaaEnabled to submitterEmail.',
+          'Cloud Function submitSnap: console entries DLP-redacted per-message when hipaaEnabled instead of stripped; notifySubmitter and submitterEmail stored on the snap document.',
+          'New Cloud Function onSnapStatusUpdated: Firestore onDocumentUpdated trigger on snap_submissions/{snapId}, sends submitter email on status change.',
+          'Missing MCP SDK dependencies (@modelcontextprotocol/sdk, zod) installed in functions/ — these were causing the TypeScript build to fail silently on deploy.',
+          'SnapFeed.tsx: filter state initialized from localStorage via lazy useState initializers; seven useEffect hooks sync each value back on change.',
+        ],
+      },
+    ],
+  },
+  {
     slug: 'release-notes-april-2026',
     title: 'Release Notes — Unified Shared Feed, Google Sign-In & Security Hardening',
     date: '2026-04-13',

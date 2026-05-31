@@ -315,6 +315,7 @@
     // interceptor and before any pointer-event trap on the overlay.
     // Knack typically only blocks 'click', not 'pointerdown'.
     window.addEventListener('pointerdown', function(e) {
+      if (state.open) return; // drawer is open — don't intercept clicks inside it
       var f = document.getElementById('s4k-fab');
       if (!f) return;
       var rect = f.getBoundingClientRect();
@@ -1304,8 +1305,8 @@
     descLabel.appendChild(descTA);
     wrap.appendChild(descLabel);
 
-    // Include Console checkbox — hidden for HIPAA plugins; shown for all other non-console snaps
-    if (state.captureType !== MODES.CONSOLE && !state.hipaaEnabled) {
+    // Include Console checkbox — shown for all non-console snaps (HIPAA plugins included; server DLP-redacts entries)
+    if (state.captureType !== MODES.CONSOLE) {
       var consoleChk = el('label', '');
       css(consoleChk, {
         display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer',
@@ -1331,7 +1332,7 @@
     var submitterEmail = (state.appSource !== 'react')
       ? (state.knackUser && (state.knackUser.email || state.knackUser.identifier))
       : (state.reactUser && state.reactUser.userEmail);
-    if (submitterEmail && !state.hipaaEnabled) {
+    if (submitterEmail) {
       var notifyChk = el('label', '');
       css(notifyChk, {
         display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer',
@@ -1375,12 +1376,8 @@
     submitBtn.addEventListener('click', function () {
       var category = catSelect.value;
       var description = descTA.value.trim();
-      var attachConsole = false; // default off for HIPAA
-      if (!state.hipaaEnabled) {
-        var chkEl = document.getElementById('s4k-attach-console');
-        if (chkEl) attachConsole = chkEl.checked;
-        else attachConsole = true;
-      }
+      var chkEl = document.getElementById('s4k-attach-console');
+      var attachConsole = chkEl ? chkEl.checked : false;
 
       state.formData = { category: category, description: description, priority: prioSelect.value };
       state.attachConsole = attachConsole;

@@ -8,7 +8,7 @@ import { DlpServiceClient, protos as dlpProtos } from "@google-cloud/dlp";
 import sgMail from "@sendgrid/mail";
 import axios from "axios";
 import { randomUUID } from "crypto";
-import { snapNotificationEmail, criticalSnapEmail, clientInvitationEmail, commentNotificationEmail, newTenantWelcomeEmail } from "./emailTemplates";
+import { snapNotificationEmail, criticalSnapEmail, clientInvitationEmail, commentNotificationEmail, newTenantWelcomeEmail, submitterStatusUpdateEmail } from "./emailTemplates";
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -656,12 +656,22 @@ export const submitSnap = functions.https.onRequest(
     const retentionDays: number = hipaaEnabled ? 2555 : ((pluginDoc.data()?.retentionDays as number) ?? 365);
 
     // Sanitise/truncate caller-supplied fields to prevent oversized Firestore documents (M-03)
-    // For HIPAA: strip console errors entirely and scrub pageUrl query params
-    const consoleErrors = hipaaEnabled
-      ? []
-      : Array.isArray(body.consoleErrors)
-        ? (body.consoleErrors as unknown[]).slice(0, 100)
-        : [];
+    // For HIPAA: DLP-redact each console entry's message instead of stripping entirely
+    const rawConsoleErrors = Array.isArray(body.consoleErrors)
+      ? (body.consoleErrors as unknown[]).slice(0, 100)
+      : [];
+    let consoleErrors: unknown[];
+    if (hipaaEnabled && rawConsoleErrors.length > 0) {
+      consoleErrors = await Promise.all(rawConsoleErrors.map(async (entry) => {
+        if (entry && typeof entry === "object" && typeof (entry as Record<string, unknown>).message === "string") {
+          const e = entry as Record<string, unknown>;
+          return { ...e, message: await dlpRedactText((e.message as string).slice(0, 500)) };
+        }
+        return entry;
+      }));
+    } else {
+      consoleErrors = rawConsoleErrors;
+    }
 
     const annotationDataRaw = body.annotationData;
     const annotationData = annotationDataRaw != null &&
@@ -691,6 +701,13 @@ export const submitSnap = functions.https.onRequest(
     }
     const context = contextRaw;
 
+    const notifySubmitter = body.notifySubmitter === true;
+    const submitterEmail = typeof contextRaw.knackUserEmail === "string" && contextRaw.knackUserEmail
+      ? contextRaw.knackUserEmail
+      : typeof contextRaw.userEmail === "string" && contextRaw.userEmail
+        ? contextRaw.userEmail
+        : null;
+
     const ALLOWED_PRIORITIES = ["low", "medium", "high", "critical"];
     const priority = ALLOWED_PRIORITIES.includes(body.priority as string)
       ? (body.priority as string)
@@ -719,6 +736,8 @@ export const submitSnap = functions.https.onRequest(
       retentionDays,
       assignedToUid: tenantId,   // default-assign to plugin owner
       assignedToName: null,      // resolved by the app from tenant profile
+      notifySubmitter,
+      submitterEmail: notifySubmitter ? submitterEmail : null,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     };
 
@@ -1031,6 +1050,50 @@ export const onCommentCreated = functions.firestore.onDocumentCreated(
         });
       })
     );
+  }
+);
+
+// ── Firestore trigger: notify submitter on status change ─────────────────────
+
+export const onSnapStatusUpdated = functions.firestore.onDocumentUpdated(
+  "snap_submissions/{snapId}",
+  async (event) => {
+    const before = event.data?.before?.data();
+    const after = event.data?.after?.data();
+    if (!before || !after) return;
+
+    // Only act when status actually changed
+    if (before.status === after.status) return;
+
+    // Only send if submitter opted in and has an email
+    const notifySubmitter = after.notifySubmitter === true;
+    const submitterEmail = typeof after.submitterEmail === "string" ? after.submitterEmail : null;
+    if (!notifySubmitter || !submitterEmail) return;
+
+    // Fetch plugin name for the email
+    let pluginName = "Snap4Knack";
+    try {
+      const pluginDoc = await db.collection("plugins").doc(after.pluginId as string).get();
+      pluginName = (pluginDoc.data()?.name as string) || pluginName;
+    } catch { /* best-effort */ }
+
+    const pageUrl = typeof after.context?.pageUrl === "string" ? after.context.pageUrl : undefined;
+
+    try {
+      await sgMail.send({
+        from: SENDGRID_FROM,
+        ...submitterStatusUpdateEmail({
+          recipientEmail: submitterEmail,
+          pluginName,
+          snapNumber: after.snapNumber as number | undefined,
+          category: (after.formData as Record<string, unknown>)?.category as string || "Feedback",
+          newStatus: after.status as string,
+          pageUrl,
+        }),
+      });
+    } catch (e) {
+      console.error("[onSnapStatusUpdated] Failed to send submitter email:", e);
+    }
   }
 );
 

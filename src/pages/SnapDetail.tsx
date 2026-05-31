@@ -27,7 +27,7 @@ import { STATUS_OPTIONS, PRIORITY_OPTIONS, CAPTURE_TYPE_LABELS } from '../config
 
 export default function SnapDetail() {
   const { id } = useParams<{ id: string }>();
-  const { user, tenant } = useAuth();
+  const { user } = useAuth();
   const tenantId = user?.uid || '';
 
   const [sub, setSub] = useState<SnapSubmission | null>(null);
