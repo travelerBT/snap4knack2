@@ -172,6 +172,7 @@ export function submitterStatusUpdateEmail(opts: {
   category: string;
   newStatus: string;
   pageUrl?: string;
+  hipaaMode?: boolean;
 }): { to: string; subject: string; html: string } {
   const pluginName = escapeHtml(opts.pluginName);
   const category = escapeHtml(opts.category);
@@ -192,7 +193,7 @@ export function submitterStatusUpdateEmail(opts: {
   };
   const color = statusBadgeColor[opts.newStatus] || '#374151';
   const label = statusLabel[opts.newStatus] || opts.newStatus;
-  const pageSection = opts.pageUrl
+  const pageSection = opts.pageUrl && !opts.hipaaMode
     ? `<p style="margin:16px 0 0"><a href="${escapeHtml(opts.pageUrl)}" style="color:#2563eb">Return to ${escapeHtml(opts.pluginName)} →</a></p>`
     : '';
   return {
@@ -209,6 +210,7 @@ export function submitterStatusUpdateEmail(opts: {
             <span style="display:inline-block;padding:6px 16px;border-radius:20px;font-weight:700;font-size:14px;color:#fff;background:${color}">${label}</span>
           </p>
           ${pageSection}
+          ${opts.hipaaMode ? HIPAA_FOOTER : ''}
         </div>
         <p style="margin-top:16px;font-size:12px;color:#9ca3af;text-align:center">
           You received this because notifications are enabled for your submission.
@@ -286,6 +288,44 @@ export function commentNotificationEmail(opts: {
           </a>
           ${opts.hipaaMode ? HIPAA_FOOTER : ''}
         </div>
+      </div>
+    `,
+  };
+}
+
+export function snapConfirmationEmail(opts: {
+  recipientEmail: string;
+  pluginName: string;
+  snapNumber?: number;
+  category: string;
+}): { to: string; subject: string; html: string } {
+  const pluginName = escapeHtml(opts.pluginName);
+  const category = escapeHtml(opts.category);
+  const snapLabel = opts.snapNumber != null ? `#${opts.snapNumber}` : 'your submission';
+  return {
+    to: opts.recipientEmail,
+    subject: `[${pluginName}] Confirmation: snap ${snapLabel} received`,
+    html: `
+      <div style="font-family:sans-serif;max-width:600px;margin:0 auto;padding:24px">
+        <div style="background:#2563eb;padding:16px 24px;border-radius:8px 8px 0 0">
+          <h1 style="color:#fff;margin:0;font-size:20px">✅ Snap Received</h1>
+        </div>
+        <div style="background:#f9fafb;padding:24px;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 8px 8px">
+          <p style="margin:0 0 12px;color:#374151">
+            Your submission has been received by <strong>${pluginName}</strong>.
+          </p>
+          <p style="margin:0 0 20px;color:#374151">
+            <strong>Category:</strong> ${category}<br>
+            <strong>Reference:</strong> ${snapLabel}
+          </p>
+          <p style="margin:0;color:#6b7280;font-size:13px">
+            You will be notified when the status of your submission changes.
+          </p>
+          ${HIPAA_FOOTER}
+        </div>
+        <p style="margin-top:16px;font-size:12px;color:#9ca3af;text-align:center">
+          Snap4Knack · This email does not contain protected health information.
+        </p>
       </div>
     `,
   };

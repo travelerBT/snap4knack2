@@ -37,9 +37,9 @@ const protections = [
   },
   {
     Icon: EyeSlashIcon,
-    title: 'Console Log Lockout',
+    title: 'Console Log DLP Redaction',
     description:
-      'Console log capture is automatically disabled for HIPAA-enabled plugins. Browser console output can contain session tokens, patient query results, or API responses with PHI — so the option is removed entirely from the widget UI.',
+      'Console log entries are available for HIPAA-enabled plugins but are automatically DLP-redacted server-side before being stored. Every console message passes through Google Cloud DLP to remove patient IDs, session tokens, and other PHI before being written to Firestore.',
   },
   {
     Icon: ClockIcon,

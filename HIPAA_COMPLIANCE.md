@@ -36,7 +36,7 @@ Snap4Knack2 offers an opt-in **HIPAA mode** that can be enabled per plugin. When
 | T-06 | **PHI text scrubbing on description** | `submitSnap` DLP-redacts `formData.description` via `dlpRedactText()` before writing to Firestore | `functions/src/index.ts` L553–556 |
 | T-07 | **PHI text scrubbing on comments** | `onCommentCreated` DLP-redacts comment text in HIPAA mode, updates the Firestore doc (`dlpFlagged`, `dlpPending`), and writes a `dlp_scan_completed` audit event recording whether PHI was detected — without re-logging the original text | `functions/src/index.ts` L702+ |
 | T-08 | **Query-string stripping from page URLs** | `submitSnap` calls `stripQueryParams(contextRaw.pageUrl)` for HIPAA plugins; query params may contain patient IDs or session tokens | `functions/src/index.ts` L559–562 |
-| T-09 | **Console log capture disabled** | `submitSnap` sets `consoleErrors: []` when `hipaaEnabled` — console capture is stripped server-side even if the client sends it; widget UI hides the console capture option | `functions/src/index.ts` L536–539 |
+| T-09 | **Console log DLP redaction** | `submitSnap` DLP-redacts every console entry's `message` via `dlpRedactText()` before writing to Firestore when `hipaaEnabled`; the Console mode button and "Include Console" checkbox are both available — entries are safe to store because PHI is scrubbed | `functions/src/index.ts` (consoleErrors DLP block) |
 | T-10 | **Private staging bucket** | Storage rules: `snap_screenshots_staging` is write-only from the client (`allow read: if false; allow delete: if false`) — only the Admin SDK (Cloud Function) can read/delete | `storage.rules` L25–31 |
 | T-11 | **Tenant-scoped storage access** | `snap_screenshots` and `snap_recordings` require `isTenantOwner(tenantId)` to read — cross-tenant access is impossible | `storage.rules` |
 | T-12 | **Sanitized email notifications** | For HIPAA snaps, notification emails omit page URLs, screenshot thumbnails, and comment text; recipients receive only a secure link to log in | `functions/src/emailTemplates.ts` (HIPAA path) |
@@ -122,7 +122,7 @@ Snap4Knack2 offers an opt-in **HIPAA mode** that can be enabled per plugin. When
 - [x] **Immutable audit archive** — ✅ T-21 (`gs://snap4knack2-audit-archive`, locked 7-year retention policy, cannot be shortened or deleted by any actor)
 - [x] **Screen recording redaction or disable** — ✅ G-03 resolved (recording disabled in HIPAA mode)
 - [x] Query-string stripping from page URLs
-- [x] Console log capture disabled for HIPAA plugins
+- [x] Console log entries DLP-redacted server-side for HIPAA plugins (Console mode available; PHI scrubbed before Firestore write)
 - [x] Private staging bucket (write-only client-side)
 - [x] Tenant-scoped storage access rules
 - [x] Sanitized email notifications (no PHI in transit to SendGrid)

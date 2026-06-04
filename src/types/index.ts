@@ -102,6 +102,7 @@ export interface SnapPlugin {
   snapSettings: SnapSettings;
   customBranding: CustomBranding;
   hipaaEnabled?: boolean;
+  dlpEnabled?: boolean;   // HIPAA only: when false, PHI is stored unredacted (requires BAA)
   retentionDays?: number;
   createdAt: Timestamp;
 }

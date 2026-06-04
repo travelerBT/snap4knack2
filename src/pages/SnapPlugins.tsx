@@ -108,6 +108,7 @@ export default function SnapPlugins() {
         status: 'active',
         selectedRoles: appType === 'react' ? [] : selectedRoles,
         hipaaEnabled: hipaaEnabled || false,
+        dlpEnabled: true,
         retentionDays: hipaaEnabled ? 2555 : 365,
         snapSettings: {
           ...DEFAULT_SNAP_SETTINGS,

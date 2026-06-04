@@ -8,7 +8,7 @@ import { DlpServiceClient, protos as dlpProtos } from "@google-cloud/dlp";
 import sgMail from "@sendgrid/mail";
 import axios from "axios";
 import { randomUUID } from "crypto";
-import { snapNotificationEmail, criticalSnapEmail, clientInvitationEmail, commentNotificationEmail, newTenantWelcomeEmail, submitterStatusUpdateEmail } from "./emailTemplates";
+import { snapNotificationEmail, criticalSnapEmail, clientInvitationEmail, commentNotificationEmail, newTenantWelcomeEmail, submitterStatusUpdateEmail, snapConfirmationEmail } from "./emailTemplates";
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -653,6 +653,8 @@ export const submitSnap = functions.https.onRequest(
     // Fetch plugin doc to check hipaaEnabled
     const pluginDoc = await db.collection("tenants").doc(tenantId).collection("snapPlugins").doc(pluginId).get();
     const hipaaEnabled = pluginDoc.data()?.hipaaEnabled === true;
+    // dlpEnabled defaults to true when the field is absent (backward compat)
+    const dlpEnabled = pluginDoc.data()?.dlpEnabled !== false;
     const retentionDays: number = hipaaEnabled ? 2555 : ((pluginDoc.data()?.retentionDays as number) ?? 365);
 
     // Sanitise/truncate caller-supplied fields to prevent oversized Firestore documents (M-03)
@@ -661,7 +663,7 @@ export const submitSnap = functions.https.onRequest(
       ? (body.consoleErrors as unknown[]).slice(0, 100)
       : [];
     let consoleErrors: unknown[];
-    if (hipaaEnabled && rawConsoleErrors.length > 0) {
+    if (hipaaEnabled && dlpEnabled && rawConsoleErrors.length > 0) {
       consoleErrors = await Promise.all(rawConsoleErrors.map(async (entry) => {
         if (entry && typeof entry === "object" && typeof (entry as Record<string, unknown>).message === "string") {
           const e = entry as Record<string, unknown>;
@@ -685,7 +687,7 @@ export const submitSnap = functions.https.onRequest(
       : {};
 
     // HIPAA: DLP-redact description field and cap at 500 chars
-    if (hipaaEnabled && typeof formDataRaw.description === "string") {
+    if (hipaaEnabled && dlpEnabled && typeof formDataRaw.description === "string") {
       formDataRaw.description = await dlpRedactText(formDataRaw.description.slice(0, 500));
     }
     const formData = formDataRaw;
@@ -702,6 +704,8 @@ export const submitSnap = functions.https.onRequest(
     const context = contextRaw;
 
     const notifySubmitter = body.notifySubmitter === true;
+    // sendConfirmation: widget user requested an immediate receipt email (all plugin types)
+    const sendConfirmation = body.sendConfirmation === true;
     const submitterEmail = typeof contextRaw.knackUserEmail === "string" && contextRaw.knackUserEmail
       ? contextRaw.knackUserEmail
       : typeof contextRaw.userEmail === "string" && contextRaw.userEmail
@@ -733,6 +737,7 @@ export const submitSnap = functions.https.onRequest(
       priority,
       status: "new",
       hipaaEnabled,
+      dlpEnabled,
       retentionDays,
       assignedToUid: tenantId,   // default-assign to plugin owner
       assignedToName: null,      // resolved by the app from tenant profile
@@ -752,6 +757,37 @@ export const submitSnap = functions.https.onRequest(
     });
 
     res.json({ id: newDocRef.id });
+
+    // HIPAA confirmation email: send a receipt to the submitter if they opted in.
+    // This runs after the response so it never delays the widget.
+    // The email contains no PHI — only snap number, category (dropdown enum), and plugin name.
+    if (sendConfirmation && submitterEmail) {
+      (async () => {
+        try {
+          const key = await getSendGridKey();
+          if (!key) return;
+          sgMail.setApiKey(key);
+          // Fetch the snapNumber that was assigned in the transaction above
+          const snapDoc = await db.collection("snap_submissions").doc(newDocRef.id).get();
+          const snapNumber = snapDoc.data()?.snapNumber as number | undefined;
+          const rawCategory = (formData as Record<string, unknown>)?.category as string || "Feedback";
+          // HIPAA: DLP-redact the category text before including it in the email.
+          // For standard plugins this step is skipped; no image DLP needed (screenshot not included in this email).
+          const categoryForEmail = hipaaEnabled && dlpEnabled ? await dlpRedactText(rawCategory.slice(0, 200)) : rawCategory;
+          await sgMail.send({
+            from: SENDGRID_FROM,
+            ...snapConfirmationEmail({
+              recipientEmail: submitterEmail,
+              pluginName: he(pluginDoc.data()?.name || "Snap4Knack"),
+              snapNumber,
+              category: he(categoryForEmail),
+            }),
+          });
+        } catch (e) {
+          console.error("[submitSnap] Failed to send HIPAA confirmation email:", e);
+        }
+      })();
+    }
 
     // HIPAA § 164.312(b): log PHI entry into the system (non-blocking, server-side guaranteed)
     if (hipaaEnabled) {
@@ -942,7 +978,8 @@ export const onCommentCreated = functions.firestore.onDocumentCreated(
     // so that snaps created with hipaaEnabled:true (e.g. via API or test scripts) also get redacted.
     const pluginDoc = await db.collection("tenants").doc(tenantId).collection("snapPlugins").doc(pluginId).get();
     const hipaaMode = pluginDoc.data()?.hipaaEnabled === true || submission.hipaaEnabled === true;
-    console.log(`[HIPAA] comment on submission ${submissionId}, plugin ${pluginId}, hipaaMode=${hipaaMode}`);
+    const dlpEnabled = pluginDoc.data()?.dlpEnabled !== false;
+    console.log(`[HIPAA] comment on submission ${submissionId}, plugin ${pluginId}, hipaaMode=${hipaaMode}, dlpEnabled=${dlpEnabled}`);
 
     // HIPAA: DLP-redact comment text and update the doc — always, regardless of notify flag
     const rawCommentText = (comment.text as string) || "";
@@ -950,7 +987,7 @@ export const onCommentCreated = functions.firestore.onDocumentCreated(
     const commentRef = db.collection("snap_submissions").doc(submissionId)
       .collection("comments").doc(event.params.commentId);
     let dlpFlagged = false;
-    if (hipaaMode && rawCommentText) {
+    if (hipaaMode && dlpEnabled && rawCommentText) {
       const redacted = await dlpRedactText(rawCommentText);
       dlpFlagged = redacted !== rawCommentText;
       await commentRef.update({ text: redacted, dlpFlagged, dlpPending: false });
@@ -968,6 +1005,22 @@ export const onCommentCreated = functions.firestore.onDocumentCreated(
         actorEmail: "",
         actorRole: "system",
         detail: `commentId: ${event.params.commentId}; flagged: ${dlpFlagged}`,
+        eventAt: admin.firestore.FieldValue.serverTimestamp(),
+      }).catch(() => {});
+    } else if (hipaaMode && !dlpEnabled && rawCommentText) {
+      // DLP intentionally disabled — clear the pending flag and write a skipped audit event
+      // so there is a permanent record that the bypass was deliberate.
+      await commentRef.update({ dlpPending: false, dlpSkipped: true });
+      db.collection("audit_log").add({
+        eventType: "dlp_scan_skipped",
+        snapId: submissionId,
+        tenantId,
+        pluginId,
+        actorUid: null,
+        actorName: "System (DLP)",
+        actorEmail: "",
+        actorRole: "system",
+        detail: `commentId: ${event.params.commentId}; DLP scanning disabled for this plugin`,
         eventAt: admin.firestore.FieldValue.serverTimestamp(),
       }).catch(() => {});
     } else {
@@ -1013,7 +1066,14 @@ export const onCommentCreated = functions.firestore.onDocumentCreated(
     // Always include the tenant owner (unless they are the author).
     if (tenantId && tenantId !== authorUid) commenterUids.add(tenantId);
 
-    if (commenterUids.size === 0) return;
+    // The snap submitter (Knack user) has no Firebase account — check if they opted in for
+    // notifications via submitterEmail stored on the snap doc.
+    const submitterEmailAddr = (typeof submission.submitterEmail === "string" && submission.submitterEmail)
+      ? submission.submitterEmail
+      : null;
+    const shouldNotifySubmitter = !!submitterEmailAddr;
+
+    if (commenterUids.size === 0 && !shouldNotifySubmitter) return;
 
     const key = await getSendGridKey();
     if (!key) return;
@@ -1050,6 +1110,28 @@ export const onCommentCreated = functions.firestore.onDocumentCreated(
         });
       })
     );
+
+    // Notify the snap submitter (Knack/external user) directly via their stored email.
+    // They have no Firebase account so they're never in commenterUids.
+    // Always treat as hipaaMode=true for external submitters (no dashboard link).
+    if (shouldNotifySubmitter) {
+      try {
+        await sgMail.send({
+          from: SENDGRID_FROM,
+          ...commentNotificationEmail({
+            recipientEmail: submitterEmailAddr!,
+            authorName,
+            commentText: hipaaMode ? "" : commentText,
+            snapNumber,
+            snapCategory: he(category),
+            dashboardUrl: "",
+            hipaaMode: true,
+          }),
+        });
+      } catch (e) {
+        console.error("[onCommentCreated] Failed to notify snap submitter:", e);
+      }
+    }
   }
 );
 
@@ -1070,14 +1152,21 @@ export const onSnapStatusUpdated = functions.firestore.onDocumentUpdated(
     const submitterEmail = typeof after.submitterEmail === "string" ? after.submitterEmail : null;
     if (!notifySubmitter || !submitterEmail) return;
 
-    // Fetch plugin name for the email
+    // Fetch plugin name for the email; also determines HIPAA mode
     let pluginName = "Snap4Knack";
+    let hipaaMode = after.hipaaEnabled === true;
     try {
-      const pluginDoc = await db.collection("plugins").doc(after.pluginId as string).get();
+      const pluginDoc = await db.collection("tenants").doc(after.tenantId as string).collection("snapPlugins").doc(after.pluginId as string).get();
       pluginName = (pluginDoc.data()?.name as string) || pluginName;
+      if (pluginDoc.data()?.hipaaEnabled === true) hipaaMode = true;
     } catch { /* best-effort */ }
 
-    const pageUrl = typeof after.context?.pageUrl === "string" ? after.context.pageUrl : undefined;
+    // For HIPAA snaps, never include the page URL in the email — it may reveal PHI context.
+    const pageUrl = hipaaMode ? undefined : (typeof after.context?.pageUrl === "string" ? after.context.pageUrl : undefined);
+
+    const key = await getSendGridKey();
+    if (!key) return;
+    sgMail.setApiKey(key);
 
     try {
       await sgMail.send({
@@ -1089,6 +1178,7 @@ export const onSnapStatusUpdated = functions.firestore.onDocumentUpdated(
           category: (after.formData as Record<string, unknown>)?.category as string || "Feedback",
           newStatus: after.status as string,
           pageUrl,
+          hipaaMode,
         }),
       });
     } catch (e) {
@@ -1427,16 +1517,26 @@ export const onScreenshotStaged = onObjectFinalized(
     const stagingFile = bucket.file(filePath);
 
     try {
+      // Check whether DLP is enabled for this plugin (defaults true when field absent)
+      const snapDocRef = db.collection("snap_submissions").doc(snapId);
+      const snapDocSnap = await snapDocRef.get();
+      const pluginId = snapDocSnap.data()?.pluginId as string | undefined;
+      let dlpEnabled = true;
+      if (pluginId) {
+        const pluginDoc = await db.collection("tenants").doc(tenantId).collection("snapPlugins").doc(pluginId).get();
+        dlpEnabled = pluginDoc.data()?.dlpEnabled !== false;
+      }
+
       // Download staged image
       const [imageBytes] = await stagingFile.download();
 
-      // DLP image redaction
-      const redactedBytes = await dlpRedactImage(imageBytes);
+      // DLP image redaction — skipped when dlpEnabled=false
+      const finalBytes = dlpEnabled ? await dlpRedactImage(imageBytes) : imageBytes;
 
       // Upload to live path
       const livePath = `snap_screenshots/${tenantId}/${fileName}`;
       const liveFile = bucket.file(livePath);
-      await liveFile.save(redactedBytes, { contentType: "image/png", resumable: false });
+      await liveFile.save(finalBytes, { contentType: "image/png", resumable: false });
 
       // Set a download token so the URL is stable (same pattern as the widget)
       const token = randomUUID();
@@ -1447,10 +1547,9 @@ export const onScreenshotStaged = onObjectFinalized(
         `${encodeURIComponent(livePath)}?alt=media&token=${token}`;
 
       // Update Firestore snap doc
-      await db.collection("snap_submissions").doc(snapId).update({
-        screenshotUrl,
-        screenshotStatus: "ready",
-      });
+      const snapUpdate: Record<string, unknown> = { screenshotUrl, screenshotStatus: "ready" };
+      if (!dlpEnabled) snapUpdate.dlpSkipped = true;
+      await snapDocRef.update(snapUpdate);
 
       // Delete staging file
       await stagingFile.delete();

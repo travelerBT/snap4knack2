@@ -18,6 +18,167 @@ export const ALL_TAGS = ['Release Notes', 'Product', 'Engineering', 'HIPAA', 'AI
 
 export const blogPosts: BlogPost[] = [
   {
+    slug: 'release-notes-june-2026',
+    title: 'Release Notes — HIPAA Email Notifications, DLP Toggle & Bug Fixes',
+    date: '2026-06-04',
+    tags: ['Release Notes', 'Product', 'Engineering', 'HIPAA'],
+    summary:
+      'Knack submitters can now receive confirmation, comment, and status-change emails — all HIPAA-safe. A new per-plugin DLP toggle lets you disable PHI scanning when needed. Plus three bug fixes: status emails were silently failing, comment notifications never reached Knack submitters, and the submission detail view was hiding email addresses.',
+    content: [
+      {
+        type: 'paragraph',
+        text: 'This release closes the feedback loop for Knack-embedded widget users: from the moment they submit a snap to every status change and comment that follows, they can now receive timely, HIPAA-compliant email notifications. It also adds a new operational control for HIPAA plugins and patches three bugs that were silently dropping emails.',
+      },
+      { type: 'divider' },
+
+      { type: 'h2', text: '📧 New: Confirmation Email on Submission' },
+      {
+        type: 'paragraph',
+        text: 'When a Knack user submits a snap and the widget detects a valid email address on their account, a new checkbox appears: "Send me a confirmation email." If checked, the submitter immediately receives a receipt acknowledging that their snap was received.',
+      },
+      {
+        type: 'ul',
+        items: [
+          'The email includes the plugin name, snap number, and category — no PHI, no page URL.',
+          'A HIPAA compliance footer is always appended to confirmation emails.',
+          'The checkbox defaults to unchecked and is entirely opt-in.',
+          'Works for both Classic Knack (V2, synchronous user attributes) and Next-Gen Knack (V3, Promise-based).',
+        ],
+      },
+      {
+        type: 'callout',
+        variant: 'info',
+        text: 'Confirmation emails are sent asynchronously after the snap is written to Firestore — they do not affect submission latency.',
+      },
+
+      { type: 'divider' },
+
+      { type: 'h2', text: '📧 New: Comment Notification for Knack Submitters' },
+      {
+        type: 'paragraph',
+        text: 'Previously, comment notifications were sent only to other dashboard users who had commented on a snap — Knack submitters were excluded because they have no Firebase account and therefore no UID in the commenter set. That gap is now closed.',
+      },
+      {
+        type: 'ul',
+        items: [
+          'When a new comment is posted, the system reads the submitterEmail stored on the snap document and sends a notification directly to the Knack submitter regardless of whether they have a Firebase account.',
+          'For HIPAA-enabled plugins, the email body is intentionally minimal: "A new comment has been added. Log in to view it securely." No snap details, no page URL, no PHI.',
+          'For standard plugins, the existing comment notification template is used.',
+        ],
+      },
+
+      { type: 'divider' },
+
+      { type: 'h2', text: '📧 New: Status Change Email for Knack Submitters' },
+      {
+        type: 'paragraph',
+        text: 'Submitters who check "Notify me when status changes" at submission time will now receive an email each time a team member updates their snap\'s status — for example, from Open to In Progress, or In Progress to Resolved.',
+      },
+      {
+        type: 'ul',
+        items: [
+          'The checkbox defaults to checked in the widget and is shown whenever the submitter\'s email is available.',
+          'For HIPAA plugins, the notification omits the page URL and includes the HIPAA compliance footer.',
+          'The submitterEmail and notifySubmitter preference are stored as top-level fields on the snap document at write time.',
+        ],
+      },
+      {
+        type: 'callout',
+        variant: 'success',
+        text: 'These three notification types together mean that a Knack user who submits a bug report gets an immediate receipt, learns when the team picks it up, and knows when it is resolved — without ever needing to log into Snap4Knack.',
+      },
+
+      { type: 'divider' },
+
+      { type: 'h2', text: '🔒 New: Per-Plugin DLP PHI Scanning Toggle' },
+      {
+        type: 'paragraph',
+        text: 'Google Cloud DLP scans screenshots and text descriptions for Protected Health Information before writing to Firestore. For most HIPAA use cases this is exactly right — but some workflows involve data that is already de-identified, or plugins where the performance overhead of DLP is not justified.',
+      },
+      {
+        type: 'paragraph',
+        text: 'A new PHI Scanning toggle in Plugin Details → HIPAA section lets administrators disable DLP on a per-plugin basis.',
+      },
+      {
+        type: 'ul',
+        items: [
+          'PHI Scanning defaults to ON for all plugins. Disabling it requires confirming an explicit acknowledgment modal.',
+          'When scanning is off, an amber warning banner is shown persistently on the plugin settings page as a continuous reminder.',
+          'When scanning is off, the snap document records dlpSkipped: true so the audit trail reflects the change.',
+          'The dlpEnabled field is stored on the plugin document in Firestore. All four scan entry points — submitSnap, onScreenshotStaged, onCommentCreated, and onSnapStatusUpdated — read this flag before invoking DLP.',
+        ],
+      },
+      {
+        type: 'callout',
+        variant: 'warning',
+        text: 'Disabling PHI Scanning means sensitive health information may be stored unredacted. Only disable this setting if you have verified that submissions from this plugin will not contain PHI.',
+      },
+
+      { type: 'divider' },
+
+      { type: 'h2', text: '🐛 Fix: Status Change Emails Were Silently Failing' },
+      {
+        type: 'paragraph',
+        text: 'The onSnapStatusUpdated Cloud Function was calling sgMail.send() without first calling sgMail.setApiKey(). Every attempted send threw a "SendGrid API key not set" error that was caught by the surrounding try/catch and logged — but only to Cloud Functions logs, which are not monitored in real time. From the outside it appeared as if the feature simply did not exist.',
+      },
+      {
+        type: 'ul',
+        items: [
+          'Fixed: the function now fetches the SendGrid API key from Secret Manager and calls sgMail.setApiKey() before each send, consistent with every other email-sending function in the codebase.',
+        ],
+      },
+
+      { type: 'divider' },
+
+      { type: 'h2', text: '🐛 Fix: Comment Notifications Never Reached Knack Submitters' },
+      {
+        type: 'paragraph',
+        text: 'The onCommentCreated function built a set of Firebase UIDs to notify and returned early if the set was empty. Since Knack submitters have no Firebase UID, the set was always empty for snaps submitted via the widget — and the function exited before the submitter notification path was ever reached.',
+      },
+      {
+        type: 'ul',
+        items: [
+          'Fixed: the early-return guard now checks both paths — it only exits early if there are zero Firebase commenters to notify AND the submitter should not be notified.',
+          'The submitter notification now runs independently of whether there are Firebase commenters.',
+        ],
+      },
+
+      { type: 'divider' },
+
+      { type: 'h2', text: '🐛 Fix: Email Address Hidden in Submission Detail View' },
+      {
+        type: 'paragraph',
+        text: 'The Snap Detail page showed "Submitted By" as a fallback chain: if a Knack name was present, the email address was never displayed. For submitters who have both a name and an email on their Knack profile, the email was stored in Firestore but invisible in the UI.',
+      },
+      {
+        type: 'ul',
+        items: [
+          'Fixed: the submission info panel now shows "Submitted By" (name) and "Email" (address) as two separate fields when both are present.',
+          'If only an email is available and no name, the email continues to appear in the "Submitted By" field as before.',
+        ],
+      },
+
+      { type: 'divider' },
+
+      { type: 'h2', text: '⚙️ Under the Hood' },
+      {
+        type: 'ul',
+        items: [
+          'Widget (snap4knack.js): "Send me a confirmation" checkbox added; sendConfirmation field included in submission payload.',
+          'Widget: context.knackUserEmail now populated from Knack user attributes and sent in the payload for both Classic and Next-Gen Knack.',
+          'Widget: Console capture mode button restored to the mode selection step for all plugin types.',
+          'Cloud Function submitSnap: reads dlpEnabled from plugin doc; gates all DLP calls on this flag; reads sendConfirmation and submitterEmail from payload; sends confirmation email asynchronously.',
+          'Cloud Function onSnapStatusUpdated: getSendGridKey() now called before sgMail.send().',
+          'Cloud Function onCommentCreated: reads submitterEmail from snap doc and sends notification independently of Firebase commenter set; respects dlpEnabled flag.',
+          'Cloud Function onScreenshotStaged: reads dlpEnabled from plugin doc; sets dlpSkipped: true on snap doc when DLP is off.',
+          'SnapDetail.tsx: Email shown as dedicated row alongside "Submitted By" name.',
+          'SnapPlugin type: dlpEnabled?: boolean added to TypeScript interface.',
+          'SnapPlugins.tsx: dlpEnabled: true included in addDoc payload for new plugins.',
+        ],
+      },
+    ],
+  },
+  {
     slug: 'release-notes-may-2026',
     title: 'Release Notes — HIPAA Widget Fixes & Persistent Snap Feed Filters',
     date: '2026-05-31',

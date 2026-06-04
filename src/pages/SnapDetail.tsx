@@ -559,6 +559,9 @@ export default function SnapDetail() {
                   className="rounded border-gray-300 text-blue-600"
                 />
                 Notify all commenters
+                {sub?.hipaaEnabled && (
+                  <span className="text-[10px] text-amber-600 font-medium">(emails never include PHI)</span>
+                )}
               </label>
             </div>
           </div>
@@ -707,12 +710,20 @@ export default function SnapDetail() {
                   </dd>
                 </div>
               )}
-              {(sub.context?.knackUserName || sub.context?.userEmail || sub.context?.userId) && (
+              {/* "Submitted By" — knackUserEmail added for Classic Knack apps that have no
+                   name field, and for Next-Gen apps where knackUserName may be the email. */}
+              {(sub.context?.knackUserName || sub.context?.knackUserEmail || sub.context?.userEmail || sub.context?.userId) && (
                 <div>
                   <dt className="text-gray-400 text-xs">Submitted By</dt>
                   <dd className="text-gray-700 font-medium">
-                    {sub.context.knackUserName || sub.context.userEmail || sub.context.userId}
+                    {sub.context.knackUserName || sub.context.knackUserEmail || sub.context.userEmail || sub.context.userId}
                   </dd>
+                </div>
+              )}
+              {sub.context?.knackUserEmail && sub.context.knackUserEmail !== sub.context?.knackUserName && (
+                <div>
+                  <dt className="text-gray-400 text-xs">Email</dt>
+                  <dd className="text-gray-700 font-medium">{sub.context.knackUserEmail}</dd>
                 </div>
               )}
               {sub.context?.knackUserId && (

@@ -697,9 +697,17 @@ function SubmissionRow({ sub, pluginName }: { sub: SnapSubmission; pluginName: s
         <p className="text-xs text-gray-400 truncate mt-0.5">{sub.context?.pageUrl ?? '—'}</p>
         <p className="text-xs text-gray-400 mt-0.5">
             {pluginName}
-            {sub.context?.knackUserName && <> · <span className="font-medium text-gray-500">{sub.context.knackUserName}</span></>}
-            {sub.context?.knackUserId && <> · <span className="font-mono">{sub.context.knackUserId}</span></>}
-            {!sub.context?.knackUserName && !sub.context?.knackUserId && <> · anonymous</>}
+            {(() => {
+              // Prefer display name → email → anonymous. Don't show the raw Knack record ID
+              // in the feed — it's shown in the detail view. For Next-Gen apps, knackUserName
+              // may already hold the email as a fallback (set in widget doMount).
+              const displayName = sub.context?.knackUserName ||
+                sub.context?.knackUserEmail ||
+                sub.context?.userEmail || null;
+              return displayName
+                ? <> · <span className="font-medium text-gray-500">{displayName}</span></>
+                : <> · <span className="text-gray-400">anonymous</span></>;
+            })()}
           </p>
       </div>
       {/* Badges */}

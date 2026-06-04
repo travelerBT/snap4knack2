@@ -63,6 +63,7 @@
     appSource: null,  // 'knack' | 'react'
     reactUser: null,  // { userId, userEmail }
     notifySubmitter: true, // submitter's preference, set in form step
+    sendConfirmation: false, // HIPAA only: send a receipt email on submission
   };
 
   // ── Console capture (all levels) ──────────────────────────────────────────
@@ -168,6 +169,12 @@
   }
 
   // ── Knack user detection ───────────────────────────────────────────────────
+
+  // Returns true when s looks like a valid email address.
+  // Used to decide whether to show email-based notification checkboxes.
+  function looksLikeEmail(s) {
+    return typeof s === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
+  }
 
   // Normalize roles from any Knack user object shape
   function getRoles(user) {
@@ -368,6 +375,7 @@
     state.currentShape = null;
     state.mode = null;
     state.notifySubmitter = true;
+    state.sendConfirmation = false;
   }
 
   function renderDrawer() {
@@ -552,6 +560,7 @@
       { id: MODES.FULL,      icon: SVG_FULL,    label: 'Full Page',      desc: 'Capture the entire visible page' },
       { id: MODES.AREA,      icon: SVG_AREA,    label: 'Select Area',    desc: 'Draw a region to capture' },
       { id: MODES.PIN,       icon: SVG_PIN,     label: 'Pin Element',    desc: 'Click on a specific element' },
+      { id: MODES.CONSOLE,   icon: SVG_CONSOLE, label: 'Console Only',   desc: state.hipaaEnabled ? 'Submit console errors (DLP-secured)' : 'Submit console errors without a screenshot' },
     ];
     if (state.allowRecording && !state.hipaaEnabled) {
       modes.push({ id: MODES.RECORDING, icon: SVG_RECORD, label: 'Record Screen', desc: 'Record up to 60 seconds' });
@@ -1352,6 +1361,28 @@
       wrap.appendChild(notifyChk);
     }
 
+    // "Send me a confirmation" — immediate receipt email.
+    // Shown for all plugins when a valid email is detected. HIPAA confirmation emails are DLP-checked server-side.
+    if (looksLikeEmail(submitterEmail)) {
+      var confirmChk = el('label', '');
+      css(confirmChk, {
+        display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer',
+        fontSize: '12px', color: '#374151', padding: '8px 10px',
+        border: '1px solid #d1d5db', borderRadius: '6px', background: '#f9fafb',
+      });
+      var confirmInput = document.createElement('input');
+      confirmInput.type = 'checkbox';
+      confirmInput.id = 's4k-send-confirmation';
+      confirmInput.checked = state.sendConfirmation;
+      confirmInput.addEventListener('change', function () { state.sendConfirmation = confirmInput.checked; });
+      var checkSpan = el('span', '', '✉️');
+      css(checkSpan, { fontSize: '13px', lineHeight: '1' });
+      confirmChk.appendChild(confirmInput);
+      confirmChk.appendChild(checkSpan);
+      confirmChk.appendChild(document.createTextNode(' Send me a confirmation of this submission'));
+      wrap.appendChild(confirmChk);
+    }
+
     // Buttons
     var footer = el('div', '');
     css(footer, { display: 'flex', gap: '8px', marginTop: '4px' });
@@ -1383,6 +1414,8 @@
       state.attachConsole = attachConsole;
       var notifyMeEl = document.getElementById('s4k-notify-me');
       if (notifyMeEl) state.notifySubmitter = notifyMeEl.checked;
+      var confirmEl = document.getElementById('s4k-send-confirmation');
+      if (confirmEl) state.sendConfirmation = confirmEl.checked;
       state.step = 'submitting';
       renderDrawer();
       submitSnap();
@@ -1475,6 +1508,7 @@
       context: context,
       priority: (state.formData && state.formData.priority) || 'medium',
       notifySubmitter: state.notifySubmitter !== false,
+      sendConfirmation: state.sendConfirmation === true,
     };
     if (extraFields) {
       Object.keys(extraFields).forEach(function (k) { payload[k] = extraFields[k]; });
@@ -1641,7 +1675,9 @@
         if (user && user.id) {
           clearInterval(poll);
           var token = (typeof global.Knack.getUserToken === 'function') ? (global.Knack.getUserToken() || '') : '';
-          doMount({ id: user.id, name: user.name, email: user.email || user.identifier || '', roles: getRoles(user), token: token });
+          // Classic Knack: name may be null if the app has no name fields — fall back to email so
+          // "Submitted By" is always populated in the dashboard (mirrors Next-Gen behaviour).
+          doMount({ id: user.id, name: user.name || user.email || user.identifier || '', email: user.email || user.identifier || '', roles: getRoles(user), token: token });
           return;
         }
       }

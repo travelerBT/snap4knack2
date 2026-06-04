@@ -56,6 +56,8 @@ export default function SnapPluginDetails() {
 
   const [hipaaSaving, setHipaaSaving] = useState(false);
   const [hipaaConfirm, setHipaaConfirm] = useState(false);
+  const [dlpSaving, setDlpSaving] = useState(false);
+  const [dlpConfirm, setDlpConfirm] = useState(false);
   const [notifSaving, setNotifSaving] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -168,6 +170,23 @@ export default function SnapPluginDetails() {
       message: enable
         ? 'All new snaps will be DLP-scanned. Retention set to 7 years (2,555 days). Existing snaps are not retroactively scanned.'
         : 'HIPAA mode disabled. Retention reset to 365 days.',
+    });
+  };
+
+  const saveDlp = async (enable: boolean) => {
+    if (!id) return;
+    setDlpSaving(true);
+    await updateDoc(doc(db, 'tenants', tenantId, 'snapPlugins', id), { dlpEnabled: enable });
+    setPlugin((p) => p ? { ...p, dlpEnabled: enable } : p);
+    setDlpSaving(false);
+    setDlpConfirm(false);
+    setModal({
+      open: true,
+      type: 'success',
+      title: enable ? 'DLP scanning enabled' : 'DLP scanning disabled',
+      message: enable
+        ? 'PHI in text and screenshots will be automatically redacted before storage.'
+        : 'DLP redaction is OFF. PHI will be stored unredacted. Ensure a signed BAA is in place.',
     });
   };
 
@@ -505,10 +524,46 @@ export default function SnapPluginDetails() {
             </div>
             {plugin.hipaaEnabled && (
               <p className="mt-3 text-xs text-green-700 bg-green-50 rounded-md px-3 py-2">
-                DLP PHI scanning enabled · {plugin.retentionDays ?? 2555}-day retention · Screen recording disabled
+                {plugin.dlpEnabled !== false ? 'DLP PHI scanning enabled' : 'DLP scanning disabled'} · {plugin.retentionDays ?? 2555}-day retention · Screen recording disabled
               </p>
             )}
           </div>
+
+          {/* DLP toggle — only visible when HIPAA mode is on */}
+          {plugin.hipaaEnabled && (
+            <div className="border border-gray-200 rounded-lg p-4 mt-2">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <ShieldCheckIcon className={`h-5 w-5 flex-shrink-0 ${plugin.dlpEnabled !== false ? 'text-green-600' : 'text-amber-500'}`} />
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">DLP PHI Scanning</p>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      {plugin.dlpEnabled !== false
+                        ? 'PHI in text and screenshots is redacted before storage'
+                        : 'OFF — PHI is stored unredacted; ensure a BAA is in place'}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => plugin.dlpEnabled !== false ? setDlpConfirm(true) : saveDlp(true)}
+                  disabled={dlpSaving}
+                  className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none disabled:opacity-50 ${
+                    plugin.dlpEnabled !== false ? 'bg-green-600' : 'bg-amber-400'
+                  }`}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                    plugin.dlpEnabled !== false ? 'translate-x-6' : 'translate-x-1'
+                  }`} />
+                </button>
+              </div>
+              {plugin.dlpEnabled === false && (
+                <p className="mt-3 text-xs text-amber-700 bg-amber-50 rounded-md px-3 py-2">
+                  ⚠️ DLP scanning is disabled. PHI in snaps, comments, and console logs will be stored unredacted. A valid BAA must be in place and access must be restricted to authorized personnel only.
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Danger Zone */}
           <div className="border border-red-200 rounded-lg p-4 mt-2">
@@ -839,6 +894,17 @@ useEffect(() => {
         onConfirm={() => { setHipaaConfirm(false); saveHipaa(true); }}
         onClose={() => setHipaaConfirm(false)}
         loading={hipaaSaving}
+      />
+      <Modal
+        open={dlpConfirm}
+        type="warning"
+        title="Disable DLP scanning?"
+        message="PHI in snap text, comments, and screenshots will be stored unredacted. This is permitted under HIPAA only when a signed Business Associate Agreement (BAA) is in place and access is restricted to authorized personnel. This change applies to new snaps only."
+        confirmLabel="Disable DLP"
+        cancelLabel="Cancel"
+        onConfirm={() => saveDlp(false)}
+        onClose={() => setDlpConfirm(false)}
+        loading={dlpSaving}
       />
       <Modal
         open={revokeConfirm.open}
