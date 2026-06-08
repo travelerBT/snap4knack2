@@ -18,6 +18,75 @@ export const ALL_TAGS = ['Release Notes', 'Product', 'Engineering', 'HIPAA', 'AI
 
 export const blogPosts: BlogPost[] = [
   {
+    slug: 'release-notes-june-8-2026',
+    title: 'Release Notes — Required Descriptions & Console Logs On by Default',
+    date: '2026-06-08',
+    tags: ['Release Notes', 'Product', 'Engineering'],
+    summary:
+      'Snap submissions now require a description before they can be sent, ensuring every ticket arrives with the context your team needs. Console logs are also captured by default on every submission so developers always have the browser output on hand.',
+    content: [
+      {
+        type: 'paragraph',
+        text: 'Two small but high-impact quality-of-life improvements ship today. Both were driven by the same observation: snaps were arriving without enough context to act on. A required description field and always-on console capture close that gap.',
+      },
+      { type: 'divider' },
+
+      { type: 'h2', text: '✏️ Description Is Now Required' },
+      {
+        type: 'paragraph',
+        text: 'The Description field in the snap submission form is now mandatory. Clicking "Send Snap" without filling it in highlights the textarea with a red border and focuses it — no snap is sent until a description is provided.',
+      },
+      {
+        type: 'ul',
+        items: [
+          'Client-side: the submit button handler validates the field and blocks submission if it is empty.',
+          'Server-side: the submitSnap Cloud Function returns a 400 Bad Request if description is missing or blank, providing a second layer of enforcement.',
+          'No changes to the Firestore data model — description was already stored as part of formData.',
+        ],
+      },
+      {
+        type: 'callout',
+        variant: 'info',
+        text: 'Existing snaps without a description are unaffected. The requirement applies only to new submissions going forward.',
+      },
+
+      { type: 'divider' },
+
+      { type: 'h2', text: '🖥️ Console Logs Included by Default' },
+      {
+        type: 'paragraph',
+        text: 'The "Include Console" checkbox in the submission form is now checked by default. Every snap automatically includes the browser\'s captured console output — logs, warnings, errors, and unhandled promise rejections — unless the submitter explicitly unchecks it.',
+      },
+      {
+        type: 'ul',
+        items: [
+          'The widget already captured all console levels (log, info, warn, error, debug) in the background — this change simply ensures that data is attached to every snap by default.',
+          'Submitters can still uncheck "Include Console" if they prefer not to send it.',
+          'HIPAA plugins are unaffected: console entries continue to be stripped server-side regardless of the checkbox state.',
+          'Up to 100 console entries are included per submission, oldest entries dropped first when the buffer fills.',
+        ],
+      },
+      {
+        type: 'callout',
+        variant: 'success',
+        text: 'With both changes in place, every new snap your team receives will have a written description and the full browser console output — meaning less back-and-forth asking submitters for more detail.',
+      },
+
+      { type: 'divider' },
+
+      { type: 'h2', text: '⚙️ Under the Hood' },
+      {
+        type: 'ul',
+        items: [
+          'Widget (snap4knack.js): submit handler now validates description before proceeding; sets border to red and focuses field on failure.',
+          'Widget (snap4knack.js): "Include Console" checkbox initialised with checked = true.',
+          'Cloud Function submitSnap (api.ts): returns 400 if formData.description is absent or whitespace-only.',
+          'firebase.json: removed unused Realtime Database configuration block that was preventing clean deploys.',
+        ],
+      },
+    ],
+  },
+  {
     slug: 'release-notes-june-2026',
     title: 'Release Notes — HIPAA Email Notifications, DLP Toggle & Bug Fixes',
     date: '2026-06-04',
