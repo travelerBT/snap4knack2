@@ -49,6 +49,12 @@ export const submitSnap = functions.https.onRequest(
         priority?: string;
       };
 
+      const description = body.formData?.description;
+      if (!description || String(description).trim() === "") {
+        res.status(400).json({ error: "Description is required" });
+        return;
+      }
+
       const snap = {
         pluginId,
         tenantId,

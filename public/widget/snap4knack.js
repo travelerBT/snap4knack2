@@ -1325,7 +1325,7 @@
       var chk = document.createElement('input');
       chk.type = 'checkbox';
       chk.id = 's4k-attach-console';
-      chk.checked = false;
+      chk.checked = true;
       var countLabel = state.consoleErrors.length > 0
         ? 'Include Console (' + state.consoleErrors.length + ' entries)'
         : 'Include Console';
@@ -1407,6 +1407,12 @@
     submitBtn.addEventListener('click', function () {
       var category = catSelect.value;
       var description = descTA.value.trim();
+      if (!description) {
+        css(descTA, { border: '1px solid #ef4444' });
+        descTA.focus();
+        return;
+      }
+      css(descTA, { border: '1px solid #d1d5db' });
       var chkEl = document.getElementById('s4k-attach-console');
       var attachConsole = chkEl ? chkEl.checked : false;
 
