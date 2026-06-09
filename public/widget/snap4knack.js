@@ -1316,6 +1316,9 @@
     });
     descLabel.appendChild(descTA);
     wrap.appendChild(descLabel);
+    var descError = el('span', '', 'Description is required.');
+    css(descError, { fontSize: '11px', color: '#ef4444', marginTop: '3px', display: 'none' });
+    wrap.appendChild(descError);
 
     // Include Console checkbox — shown for all non-console snaps (HIPAA plugins included; server DLP-redacts entries)
     if (state.captureType !== MODES.CONSOLE) {
@@ -1412,10 +1415,12 @@
       var description = descTA.value.trim();
       if (!description) {
         css(descTA, { border: '1px solid #ef4444' });
+        css(descError, { display: 'block' });
         descTA.focus();
         return;
       }
       css(descTA, { border: '1px solid #d1d5db' });
+      css(descError, { display: 'none' });
       var chkEl = document.getElementById('s4k-attach-console');
       var attachConsole = chkEl ? chkEl.checked : false;
 
