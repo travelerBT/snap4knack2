@@ -1303,6 +1303,9 @@
     // Description
     var descLabel = el('label', '', 'Description');
     css(descLabel, { fontSize: '12px', fontWeight: '600', color: '#374151' });
+    var reqStar = el('span', '', ' *');
+    css(reqStar, { color: '#ef4444' });
+    descLabel.appendChild(reqStar);
     var descTA = el('textarea', '');
     descTA.rows = 4;
     descTA.placeholder = 'Describe what you\'re seeing or what you need help with...';
