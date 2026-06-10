@@ -380,13 +380,26 @@ export default function SnapFeed() {
           <p className="mt-1 text-sm text-gray-500">Submissions from your Knack apps will appear here.</p>
         </div>
       ) : view === 'kanban' ? (
-        <KanbanBoard
-          submissions={filtered}
-          linkPrefix="/snap-feed"
-          pluginMap={pluginMap}
-          onStatusChange={handleStatusChange}
-          onReorder={handleReorder}
-        />
+        <>
+          <KanbanBoard
+            submissions={filtered}
+            linkPrefix="/snap-feed"
+            pluginMap={pluginMap}
+            onStatusChange={handleStatusChange}
+            onReorder={handleReorder}
+          />
+          {hasMore && (
+            <div className="mt-4 text-center">
+              <button
+                onClick={handleLoadMore}
+                disabled={loadingMore}
+                className="inline-flex items-center gap-2 text-sm text-blue-600 hover:text-blue-700 font-medium disabled:opacity-50"
+              >
+                {loadingMore ? 'Loading…' : 'Load more'}
+              </button>
+            </div>
+          )}
+        </>
       ) : (
         <>
           <div className="space-y-6">
