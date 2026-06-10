@@ -1681,6 +1681,24 @@
     state.position = config.position || 'bottom-right';
     state.categories = config.categories || ['Bug', 'Feature Request', 'Question', 'Other'];
 
+    // ── Knack focus-trap countermeasure (runs once at mount time) ─────────────
+    // Next Gen Knack registers a capture-phase focus trap at the document/window
+    // level that calls preventDefault() on keypresses and steals focus from
+    // anything outside the active Knack modal.
+    // Fix: register at window capture phase — the earliest possible point in the
+    // event chain — so our handler runs BEFORE Knack's. If the event target is
+    // inside the widget drawer, we call stopImmediatePropagation() to prevent
+    // Knack's handler from ever seeing it. We do NOT call preventDefault(), so
+    // the browser's native character-insertion and focus behavior still fires.
+    ['keydown', 'keypress', 'keyup', 'focusin'].forEach(function (evtName) {
+      window.addEventListener(evtName, function (e) {
+        var drawer = document.getElementById('s4k-drawer');
+        if (drawer && drawer.contains(e.target)) {
+          e.stopImmediatePropagation();
+        }
+      }, true);
+    });
+
     var mounted = false;
 
     function doMount(user) {
