@@ -539,13 +539,29 @@
     });
     drawerObserver.observe(drawer, { attributes: true, attributeFilter: ['aria-hidden', 'data-aria-hidden', 'inert', 'style'] });
 
-    // Knack modals attach a document-level keydown focus-trap that swallows all
-    // keyboard events originating outside the modal DOM. Stop propagation here so
-    // typing inside the widget always reaches our inputs, even when a Knack modal
-    // is open behind it.
-    ['keydown', 'keyup', 'keypress'].forEach(function (evtName) {
-      drawer.addEventListener(evtName, function (e) { e.stopPropagation(); }, true);
+    // Knack modals attach document-level jQuery handlers (bubble phase) that
+    // intercept keyboard events and steal focus away from elements outside the
+    // modal DOM. Fix: stop keyboard + focus events in the BUBBLE phase at the
+    // drawer level so they reach our inputs first (via capture/target phase)
+    // but never bubble up to Knack's document handlers.
+    // NOTE: must be bubble phase (no third arg) — capture phase would consume
+    // events before they ever reached the textarea children.
+    ['keydown', 'keyup', 'keypress', 'focusin'].forEach(function (evtName) {
+      drawer.addEventListener(evtName, function (e) { e.stopPropagation(); });
     });
+
+    // If Knack sets `inert` on document.body (making all descendants non-interactive),
+    // remove it so the drawer can still receive input. Re-apply pointer-events too.
+    var bodyObserver = new MutationObserver(function () {
+      if (document.body.hasAttribute('inert')) {
+        document.body.removeAttribute('inert');
+      }
+      if (document.body.getAttribute('aria-hidden')) {
+        document.body.removeAttribute('aria-hidden');
+      }
+      drawer.style.setProperty('pointer-events', 'auto', 'important');
+    });
+    bodyObserver.observe(document.body, { attributes: true, attributeFilter: ['inert', 'aria-hidden'] });
   }
 
   // ── Step: mode selection ───────────────────────────────────────────────────
