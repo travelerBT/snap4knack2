@@ -25,6 +25,9 @@
 
   // ── State ──────────────────────────────────────────────────────────────────
 
+  // Store the native focus so we can restore it on teardown.
+  var _s4kOrigFocus = HTMLElement.prototype.focus;
+
   var state = {
     config: null,
     idToken: null,
@@ -1705,22 +1708,23 @@
     state.categories = config.categories || ['Bug', 'Feature Request', 'Question', 'Other'];
 
     // ── Knack focus-trap countermeasure (runs once at mount time) ─────────────
-    // Next Gen Knack registers a capture-phase focus trap at the document/window
-    // level that calls preventDefault() on keypresses and steals focus from
-    // anything outside the active Knack modal.
-    // Fix: register at window capture phase — the earliest possible point in the
-    // event chain — so our handler runs BEFORE Knack's. If the event target is
-    // inside the widget drawer, we call stopImmediatePropagation() to prevent
-    // Knack's handler from ever seeing it. We do NOT call preventDefault(), so
-    // the browser's native character-insertion and focus behavior still fires.
-    ['keydown', 'keypress', 'keyup', 'focusin'].forEach(function (evtName) {
-      window.addEventListener(evtName, function (e) {
-        var drawer = document.getElementById('s4k-drawer');
-        if (drawer && drawer.contains(e.target)) {
-          e.stopImmediatePropagation();
-        }
-      }, true);
-    });
+    // Next Gen Knack (React-based) calls .focus() programmatically to keep focus
+    // inside its modal. No event listener can intercept a .focus() call.
+    // Solution: override HTMLElement.prototype.focus once at mount time.
+    // When #s4k-drawer is open and focus is inside it, any .focus() call targeting
+    // an element OUTSIDE the drawer is silently blocked. When the drawer is closed
+    // (removed from DOM), getElementById returns null and all calls pass through.
+    HTMLElement.prototype.focus = function (options) {
+      var drawer = document.getElementById('s4k-drawer');
+      if (drawer) {
+        // Always allow focus to elements inside our drawer
+        if (drawer.contains(this)) { return _s4kOrigFocus.call(this, options); }
+        // Block programmatic focus that would pull focus OUT of our drawer
+        var currentActive = document.activeElement;
+        if (currentActive && drawer.contains(currentActive)) { return; }
+      }
+      return _s4kOrigFocus.call(this, options);
+    };
 
     var mounted = false;
 
@@ -1828,6 +1832,8 @@
   // ── Teardown ───────────────────────────────────────────────────────────────
 
   function teardown() {
+    // Restore native focus before tearing down
+    HTMLElement.prototype.focus = _s4kOrigFocus;
     var fab = document.getElementById('s4k-fab');
     if (fab && fab.parentNode) fab.parentNode.removeChild(fab);
     var drawer = document.getElementById('s4k-drawer');
