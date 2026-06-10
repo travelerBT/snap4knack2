@@ -538,6 +538,14 @@
       }
     });
     drawerObserver.observe(drawer, { attributes: true, attributeFilter: ['aria-hidden', 'data-aria-hidden', 'inert', 'style'] });
+
+    // Knack modals attach a document-level keydown focus-trap that swallows all
+    // keyboard events originating outside the modal DOM. Stop propagation here so
+    // typing inside the widget always reaches our inputs, even when a Knack modal
+    // is open behind it.
+    ['keydown', 'keyup', 'keypress'].forEach(function (evtName) {
+      drawer.addEventListener(evtName, function (e) { e.stopPropagation(); }, true);
+    });
   }
 
   // ── Step: mode selection ───────────────────────────────────────────────────
