@@ -59,6 +59,11 @@ export default function SnapFeed() {
   const [moreItems, setMoreItems] = useState<SnapSubmission[]>([]);
   // Accumulates per-status snapshots when running one query per column
   const byStatusRef = useRef<Record<string, SnapSubmission[]>>({});
+  // Per-column pagination state (used when no filter active → per-status mode)
+  const [cursorByStatus, setCursorByStatus] = useState<Record<string, QueryDocumentSnapshot<DocumentData> | null>>({});
+  const [hasMoreByStatus, setHasMoreByStatus] = useState<Record<string, boolean>>({});
+  const [loadingMoreByStatus, setLoadingMoreByStatus] = useState<Record<string, boolean>>({});
+  const [additionalByStatus, setAdditionalByStatus] = useState<Record<string, SnapSubmission[]>>({});
   const [lastLiveDoc, setLastLiveDoc] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
   const [lastMoreDoc, setLastMoreDoc] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
   const [plugins, setPlugins] = useState<SnapPlugin[]>([]);
@@ -120,6 +125,9 @@ export default function SnapFeed() {
     setLastMoreDoc(null);
     setHasMore(false);
     byStatusRef.current = {};
+    setAdditionalByStatus({});
+    setCursorByStatus({});
+    setHasMoreByStatus({});
 
     const isSharedPlugin = !!pluginFilter && sharedPluginInfos.some((s) => s.pluginId === pluginFilter);
 
@@ -146,6 +154,8 @@ export default function SnapFeed() {
         return onSnapshot(q, (snap) => {
           byStatusRef.current[status] = snap.docs.map((d) => ({ id: d.id, ...d.data() } as SnapSubmission));
           setLiveItems(Object.values(byStatusRef.current).flat());
+          setCursorByStatus((prev) => ({ ...prev, [status]: snap.docs[snap.docs.length - 1] ?? null }));
+          setHasMoreByStatus((prev) => ({ ...prev, [status]: snap.size === PAGE_SIZE }));
           setLoading(false);
         }, (err) => {
           console.error('SnapFeed per-status query error:', err);
@@ -179,6 +189,58 @@ export default function SnapFeed() {
     return unsub;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId, pluginFilter, statusFilter, typeFilter, priorityFilter, sourceFilter, sharedPluginInfos]);
+
+  const loadMoreForStatus = async (status: string) => {
+    const cursor = cursorByStatus[status];
+    if (!cursor || loadingMoreByStatus[status]) return;
+    setLoadingMoreByStatus((prev) => ({ ...prev, [status]: true }));
+
+    const isSharedPlugin = !!pluginFilter && sharedPluginInfos.some((s) => s.pluginId === pluginFilter);
+    const baseC: Parameters<typeof query>[1][] = isSharedPlugin
+      ? [where('pluginId', '==', pluginFilter)]
+      : [where('tenantId', '==', tenantId), ...(pluginFilter ? [where('pluginId', '==', pluginFilter)] : [])];
+
+    const q = query(
+      collection(db, 'snap_submissions'),
+      ...baseC,
+      where('status', '==', status),
+      orderBy('createdAt', 'desc'),
+      startAfter(cursor),
+      limit(PAGE_SIZE),
+    );
+    const snap = await getDocs(q);
+    const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() } as SnapSubmission));
+    setAdditionalByStatus((prev) => ({ ...prev, [status]: [...(prev[status] ?? []), ...docs] }));
+    setCursorByStatus((prev) => ({ ...prev, [status]: snap.docs[snap.docs.length - 1] ?? null }));
+    setHasMoreByStatus((prev) => ({ ...prev, [status]: snap.size === PAGE_SIZE }));
+    setLoadingMoreByStatus((prev) => ({ ...prev, [status]: false }));
+  };
+
+  const loadAllForStatus = async (status: string) => {
+    if (loadingMoreByStatus[status]) return;
+    setLoadingMoreByStatus((prev) => ({ ...prev, [status]: true }));
+
+    const isSharedPlugin = !!pluginFilter && sharedPluginInfos.some((s) => s.pluginId === pluginFilter);
+    const baseC: Parameters<typeof query>[1][] = isSharedPlugin
+      ? [where('pluginId', '==', pluginFilter)]
+      : [where('tenantId', '==', tenantId), ...(pluginFilter ? [where('pluginId', '==', pluginFilter)] : [])];
+
+    const cursor = cursorByStatus[status];
+    const q = query(
+      collection(db, 'snap_submissions'),
+      ...baseC,
+      where('status', '==', status),
+      orderBy('createdAt', 'desc'),
+      ...(cursor ? [startAfter(cursor)] : []),
+      limit(500),
+    );
+    const snap = await getDocs(q);
+    const docs = snap.docs.map((d) => ({ id: d.id, ...d.data() } as SnapSubmission));
+    setAdditionalByStatus((prev) => ({ ...prev, [status]: [...(prev[status] ?? []), ...docs] }));
+    setCursorByStatus((prev) => ({ ...prev, [status]: snap.docs[snap.docs.length - 1] ?? null }));
+    setHasMoreByStatus((prev) => ({ ...prev, [status]: false }));
+    setLoadingMoreByStatus((prev) => ({ ...prev, [status]: false }));
+  };
 
   const handleLoadMore = async () => {
     const cursor = lastMoreDoc ?? lastLiveDoc;
@@ -214,10 +276,19 @@ export default function SnapFeed() {
 
   // Merge live first page with any additional pages loaded via "Load More"
   const liveIds = useMemo(() => new Set(liveItems.map((s) => s.id)), [liveItems]);
-  const submissions = useMemo(
-    () => [...liveItems, ...moreItems.filter((s) => !liveIds.has(s.id))],
-    [liveItems, moreItems, liveIds]
-  );
+  const submissions = useMemo(() => {
+    const seen = new Set(liveItems.map((s) => s.id));
+    const additionalFlat = Object.values(additionalByStatus).flat().filter((s) => {
+      if (seen.has(s.id)) return false;
+      seen.add(s.id);
+      return true;
+    });
+    return [
+      ...liveItems,
+      ...moreItems.filter((s) => !liveIds.has(s.id)),
+      ...additionalFlat,
+    ];
+  }, [liveItems, moreItems, liveIds, additionalByStatus]);
 
   const filtered = useMemo(() => {
     let result = submissions;
@@ -423,6 +494,10 @@ export default function SnapFeed() {
             pluginMap={pluginMap}
             onStatusChange={handleStatusChange}
             onReorder={handleReorder}
+            hasMoreByStatus={hasMoreByStatus}
+            loadingMoreByStatus={loadingMoreByStatus}
+            onLoadMoreForStatus={loadMoreForStatus}
+            onLoadAllForStatus={loadAllForStatus}
           />
           {hasMore && (
             <div className="mt-4 text-center">

@@ -50,6 +50,10 @@ interface KanbanBoardProps {
   pluginMap?: Record<string, SnapPlugin>;
   onStatusChange?: (id: string, newStatus: string) => Promise<void>;
   onReorder?: (columnStatus: string, orderedIds: string[]) => Promise<void>;
+  hasMoreByStatus?: Record<string, boolean>;
+  loadingMoreByStatus?: Record<string, boolean>;
+  onLoadMoreForStatus?: (status: string) => void;
+  onLoadAllForStatus?: (status: string) => void;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -206,6 +210,10 @@ function KanbanColumn({
   pluginMap,
   draggingId,
   canDrag,
+  hasMore,
+  loadingMore,
+  onLoadMore,
+  onLoadAll,
 }: {
   statusValue: string;
   statusLabel: string;
@@ -215,6 +223,10 @@ function KanbanColumn({
   pluginMap?: Record<string, SnapPlugin>;
   draggingId: string | null;
   canDrag: boolean;
+  hasMore?: boolean;
+  loadingMore?: boolean;
+  onLoadMore?: () => void;
+  onLoadAll?: () => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: statusValue });
   const styles = COLUMN_STYLES[statusValue] ?? COLUMN_STYLES['archived'];
@@ -232,6 +244,24 @@ function KanbanColumn({
           isOver ? 'ring-2 ring-inset ring-blue-400 bg-blue-50' : ''
         }`}
       >
+        {(hasMore || loadingMore) && (
+          <div className="flex items-center gap-2 mb-2 pb-2 border-b border-dashed border-gray-300">
+            <button
+              onClick={onLoadMore}
+              disabled={loadingMore}
+              className="flex-1 text-xs text-blue-600 hover:text-blue-700 font-medium disabled:opacity-40 py-1 rounded hover:bg-blue-50 transition-colors"
+            >
+              {loadingMore ? 'Loading…' : '↓ Load more'}
+            </button>
+            <button
+              onClick={onLoadAll}
+              disabled={loadingMore}
+              className="flex-1 text-xs text-indigo-600 hover:text-indigo-700 font-medium disabled:opacity-40 py-1 rounded hover:bg-indigo-50 transition-colors"
+            >
+              {loadingMore ? '…' : '⇓ Load All'}
+            </button>
+          </div>
+        )}
         <SortableContext items={orderedIds} strategy={verticalListSortingStrategy}>
           <div className="space-y-2">
             {orderedIds.map((id) => {
@@ -262,7 +292,7 @@ function KanbanColumn({
 
 // ── Main board ────────────────────────────────────────────────────────────────
 
-export default function KanbanBoard({ submissions, linkPrefix, pluginMap, onStatusChange, onReorder }: KanbanBoardProps) {
+export default function KanbanBoard({ submissions, linkPrefix, pluginMap, onStatusChange, onReorder, hasMoreByStatus, loadingMoreByStatus, onLoadMoreForStatus, onLoadAllForStatus }: KanbanBoardProps) {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragStartCol, setDragStartCol] = useState<string | null>(null);
   const [localGroups, setLocalGroups] = useState<Record<string, string[]>>(() => buildGroups(submissions));
@@ -394,6 +424,10 @@ export default function KanbanBoard({ submissions, linkPrefix, pluginMap, onStat
             pluginMap={pluginMap}
             draggingId={draggingId}
             canDrag={canDrag}
+            hasMore={hasMoreByStatus?.[s.value]}
+            loadingMore={loadingMoreByStatus?.[s.value]}
+            onLoadMore={() => onLoadMoreForStatus?.(s.value)}
+            onLoadAll={() => onLoadAllForStatus?.(s.value)}
           />
         ))}
       </div>
