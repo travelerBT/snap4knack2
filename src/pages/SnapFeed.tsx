@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
   collection,
@@ -57,6 +57,8 @@ export default function SnapFeed() {
 
   const [liveItems, setLiveItems] = useState<SnapSubmission[]>([]);
   const [moreItems, setMoreItems] = useState<SnapSubmission[]>([]);
+  // Accumulates per-status snapshots when running one query per column
+  const byStatusRef = useRef<Record<string, SnapSubmission[]>>({});
   const [lastLiveDoc, setLastLiveDoc] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
   const [lastMoreDoc, setLastMoreDoc] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
   const [plugins, setPlugins] = useState<SnapPlugin[]>([]);
@@ -106,22 +108,56 @@ export default function SnapFeed() {
     loadMeta();
   }, [tenantId]);
 
-  // Real-time listener for first page — re-subscribes when filters change
+  // Real-time listener — re-subscribes when filters change.
+  // When no status/type/priority/source filter is active we run one query per
+  // status column so each Kanban column independently shows its most recent
+  // PAGE_SIZE snaps.  A single cross-status query would fill the page with the
+  // newest snaps overall, starving older-but-active columns like "Resolved".
   useEffect(() => {
     if (!tenantId) return;
     setLoading(true);
     setMoreItems([]);
     setLastMoreDoc(null);
+    setHasMore(false);
+    byStatusRef.current = {};
 
     const isSharedPlugin = !!pluginFilter && sharedPluginInfos.some((s) => s.pluginId === pluginFilter);
 
-    const constraints: Parameters<typeof query>[1][] = [
+    const baseConstraints = (extra: Parameters<typeof query>[1][] = []): Parameters<typeof query>[1][] => [
       ...(isSharedPlugin
         ? [where('pluginId', '==', pluginFilter)]
         : [
             where('tenantId', '==', tenantId),
             ...(pluginFilter ? [where('pluginId', '==', pluginFilter)] : []),
           ]),
+      ...extra,
+    ];
+
+    // Per-status mode: no active status/type/priority/source filter
+    const usePerStatus = !statusFilter && !typeFilter && !priorityFilter && !sourceFilter;
+    if (usePerStatus) {
+      const unsubs = STATUS_OPTIONS.map(({ value: status }) => {
+        const q = query(
+          collection(db, 'snap_submissions'),
+          ...baseConstraints([where('status', '==', status)]),
+          orderBy('createdAt', 'desc'),
+          limit(PAGE_SIZE),
+        );
+        return onSnapshot(q, (snap) => {
+          byStatusRef.current[status] = snap.docs.map((d) => ({ id: d.id, ...d.data() } as SnapSubmission));
+          setLiveItems(Object.values(byStatusRef.current).flat());
+          setLoading(false);
+        }, (err) => {
+          console.error('SnapFeed per-status query error:', err);
+          setLoading(false);
+        });
+      });
+      return () => unsubs.forEach((u) => u());
+    }
+
+    // Single query when a specific filter is active
+    const constraints: Parameters<typeof query>[1][] = [
+      ...baseConstraints(),
       orderBy('createdAt', 'desc'),
       limit(PAGE_SIZE),
     ];
