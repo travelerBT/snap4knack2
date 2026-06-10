@@ -28,6 +28,23 @@
   // Store the native focus so we can restore it on teardown.
   var _s4kOrigFocus = HTMLElement.prototype.focus;
 
+  // Inject a <style> tag once so that all elements inside our drawer always have
+  // pointer-events enabled, regardless of what Knack's CSS sets on `*`.
+  // Knack modals often apply `pointer-events: none !important` to every element
+  // on the page; an ID-qualified rule beats any class/attribute/element selector
+  // even when both use !important (higher specificity wins).
+  (function () {
+    if (document.getElementById('s4k-pe-style')) return;
+    var s = document.createElement('style');
+    s.id = 's4k-pe-style';
+    s.textContent =
+      '#s4k-drawer, #s4k-drawer * { pointer-events: auto !important; }' +
+      'dialog#s4k-drawer { padding: 0; border: none; margin: 0; max-width: none; max-height: none; }' +
+      'dialog#s4k-drawer::backdrop { background: transparent; }' +
+      'dialog#s4k-drawer[data-s4k-modal]::backdrop { background: rgba(0,0,0,0.55); }';
+    (document.head || document.documentElement).appendChild(s);
+  }());
+
   var state = {
     config: null,
     idToken: null,
@@ -355,7 +372,7 @@
     state.open = false;
     state.expanded = false;
     var drawer = document.getElementById('s4k-drawer');
-    if (drawer) drawer.remove();
+    if (drawer) { if (typeof drawer.close === 'function') drawer.close(); drawer.remove(); }
     var overlay = document.getElementById('s4k-overlay');
     if (overlay) overlay.remove();
     var backdrop = document.getElementById('s4k-modal-backdrop');
@@ -383,35 +400,18 @@
 
   function renderDrawer() {
     var existing = document.getElementById('s4k-drawer');
-    if (existing) existing.remove();
+    if (existing) { if (typeof existing.close === 'function') existing.close(); existing.remove(); }
 
-    // Manage backdrop for expanded modal mode
+    // Remove any stale custom backdrop left by older code
     var existingBackdrop = document.getElementById('s4k-modal-backdrop');
     if (existingBackdrop) existingBackdrop.remove();
-    if (state.expanded) {
-      var backdrop = el('div');
-      backdrop.id = 's4k-modal-backdrop';
-      css(backdrop, {
-        position: 'fixed', top: '0', left: '0', width: '100%', height: '100%',
-        background: 'rgba(0,0,0,0.55)', zIndex: '2147483645',
-        transition: 'opacity 0.2s ease',
-      });
-      backdrop.addEventListener('click', function () {
-        state.expanded = false;
-        renderDrawer();
-      });
-      document.body.appendChild(backdrop);
-      var backdropObserver = new MutationObserver(function () {
-        if (backdrop.getAttribute('aria-hidden')) backdrop.removeAttribute('aria-hidden');
-        if (backdrop.getAttribute('data-aria-hidden')) backdrop.removeAttribute('data-aria-hidden');
-        if (backdrop.hasAttribute('inert')) backdrop.removeAttribute('inert');
-      });
-      backdropObserver.observe(backdrop, { attributes: true, attributeFilter: ['aria-hidden', 'data-aria-hidden', 'inert'] });
-    }
 
-    var drawer = el('div');
+    // Use <dialog> so snap4knack enters the browser's top layer, sitting above
+    // any Knack showModal() dialog. Top-layer elements are never inert.
+    var drawer = el('dialog');
     drawer.id = 's4k-drawer';
     if (state.expanded) {
+      drawer.setAttribute('data-s4k-modal', '');
       css(drawer, {
         position: 'fixed',
         top: '50%',
@@ -421,8 +421,6 @@
         height: 'min(90vh, 860px)',
         background: '#fff',
         boxShadow: '0 24px 64px rgba(0,0,0,0.35)',
-        zIndex: '2147483646',
-        pointerEvents: 'auto',
         display: 'flex',
         flexDirection: 'column',
         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
@@ -440,8 +438,6 @@
         height: '100%',
         background: '#fff',
         boxShadow: '-4px 0 20px rgba(0,0,0,0.15)',
-        zIndex: '2147483646',
-        pointerEvents: 'auto',
         display: 'flex',
         flexDirection: 'column',
         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
@@ -527,20 +523,18 @@
 
     drawer.appendChild(body);
     document.body.appendChild(drawer);
-    // Force pointer-events with !important to beat Knack CSS rules like
-    // `body.kn-dialog-open * { pointer-events: none }` that override default styles.
-    drawer.style.setProperty('pointer-events', 'auto', 'important');
-    var drawerObserver = new MutationObserver(function () {
-      // Strip aria-hidden / inert
-      if (drawer.getAttribute('aria-hidden')) drawer.removeAttribute('aria-hidden');
-      if (drawer.getAttribute('data-aria-hidden')) drawer.removeAttribute('data-aria-hidden');
-      if (drawer.hasAttribute('inert')) drawer.removeAttribute('inert');
-      // Re-force pointer-events in case Knack set it via JS on the style attribute
-      if (drawer.style.pointerEvents !== 'auto') {
-        drawer.style.setProperty('pointer-events', 'auto', 'important');
-      }
-    });
-    drawerObserver.observe(drawer, { attributes: true, attributeFilter: ['aria-hidden', 'data-aria-hidden', 'inert', 'style'] });
+    // Enter the browser top layer — this is the definitive fix for Knack's
+    // showModal() making everything outside its dialog natively inert.
+    drawer.showModal();
+    // Clicking the ::backdrop (event target is the dialog itself) closes expanded mode
+    if (state.expanded) {
+      drawer.addEventListener('click', function (e) {
+        if (e.target === drawer) {
+          state.expanded = false;
+          renderDrawer();
+        }
+      });
+    }
 
     // Knack modals attach document-level jQuery handlers (bubble phase) that
     // intercept keyboard events and steal focus away from elements outside the
