@@ -39,7 +39,7 @@
     s.id = 's4k-pe-style';
     s.textContent =
       '#s4k-drawer, #s4k-drawer * { pointer-events: auto !important; }' +
-      'dialog#s4k-drawer { padding: 0; border: none; margin: 0; max-width: none; max-height: none; }' +
+      'dialog#s4k-drawer { padding: 0; border: none; margin: 0; max-width: none; max-height: none; inset: auto; }' +
       'dialog#s4k-drawer::backdrop { background: transparent; }' +
       'dialog#s4k-drawer[data-s4k-modal]::backdrop { background: rgba(0,0,0,0.55); }';
     (document.head || document.documentElement).appendChild(s);
