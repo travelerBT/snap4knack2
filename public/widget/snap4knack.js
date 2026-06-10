@@ -562,6 +562,29 @@
       drawer.style.setProperty('pointer-events', 'auto', 'important');
     });
     bodyObserver.observe(document.body, { attributes: true, attributeFilter: ['inert', 'aria-hidden'] });
+
+    // Last-resort focus defence: if Next Gen Knack uses a programmatic .focus()
+    // call (React focus-trap) that bypasses all event-based fixes, detect focus
+    // leaving the drawer via focusout and immediately reclaim it.
+    // setTimeout(0) queues the refocus AFTER the current JS task, so it runs
+    // after whatever focus() call Knack made in the same tick.
+    drawer.addEventListener('focusout', function (e) {
+      var lastFocused = e.target;
+      // Only refocus if the element losing focus is one of our inputs
+      var tag = lastFocused && lastFocused.tagName;
+      if (tag !== 'TEXTAREA' && tag !== 'INPUT' && tag !== 'SELECT') return;
+      setTimeout(function () {
+        // Bail if drawer was closed or step changed away from form
+        if (!document.getElementById('s4k-drawer') || state.step !== 'form') return;
+        var active = document.activeElement;
+        // If focus is still inside the drawer, all is fine
+        if (active && drawer.contains(active)) return;
+        // Focus left the drawer — bring it back to the element that had it
+        if (lastFocused && drawer.contains(lastFocused)) {
+          lastFocused.focus();
+        }
+      }, 0);
+    });
   }
 
   // ── Step: mode selection ───────────────────────────────────────────────────
