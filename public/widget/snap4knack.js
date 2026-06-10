@@ -737,12 +737,22 @@
 
   function closeDrawerBody() {
     var drawer = document.getElementById('s4k-drawer');
-    if (drawer) { css(drawer, { display: 'none' }); }
+    if (drawer) {
+      // Remove from top layer so that body overlays (area-select, element-pin,
+      // recording indicator) are interactable while capture is in progress.
+      if (typeof drawer.close === 'function') drawer.close();
+      css(drawer, { display: 'none' });
+    }
   }
 
   function showDrawer() {
     var drawer = document.getElementById('s4k-drawer');
-    if (drawer) { css(drawer, { display: 'flex' }); } else { renderDrawer(); }
+    if (!drawer) { renderDrawer(); return; }
+    css(drawer, { display: 'flex' });
+    // Re-enter the top layer now that capture overlays are gone.
+    if (!drawer.open && typeof drawer.showModal === 'function') {
+      try { drawer.showModal(); } catch (e) {}
+    }
   }
 
   // Full viewport via html2canvas
@@ -1831,7 +1841,7 @@
     var fab = document.getElementById('s4k-fab');
     if (fab && fab.parentNode) fab.parentNode.removeChild(fab);
     var drawer = document.getElementById('s4k-drawer');
-    if (drawer && drawer.parentNode) drawer.parentNode.removeChild(drawer);
+    if (drawer) { if (typeof drawer.close === 'function') drawer.close(); if (drawer.parentNode) drawer.parentNode.removeChild(drawer); }
     var backdrop = document.getElementById('s4k-modal-backdrop');
     if (backdrop && backdrop.parentNode) backdrop.parentNode.removeChild(backdrop);
     state.open = false;
