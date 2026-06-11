@@ -21,6 +21,8 @@ import {
   XMarkIcon,
   BellIcon,
   UserCircleIcon,
+  ClipboardDocumentIcon,
+  CheckIcon,
 } from '@heroicons/react/24/outline';
 import type { SnapSubmission, SnapComment, AnnotationShape, StatusHistoryEntry, TenantShare } from '../types';
 import { STATUS_OPTIONS, PRIORITY_OPTIONS, CAPTURE_TYPE_LABELS } from '../config/constants';
@@ -45,6 +47,8 @@ export default function SnapDetail() {
   const auditLoggedRef = useRef(false);
   const [assignees, setAssignees] = useState<{ uid: string; name: string }[]>([]);
   const [assigneeSaving, setAssigneeSaving] = useState(false);
+  const [copiedInfo, setCopiedInfo] = useState(false);
+  const [copiedImage, setCopiedImage] = useState(false);
 
   useEffect(() => {
     if (!sub?.pluginId || !tenantId) return;
@@ -314,6 +318,63 @@ export default function SnapDetail() {
     setUpdating(false);
   };
 
+  const copyInfo = async () => {
+    if (!sub) return;
+    const lines: string[] = [];
+    if (sub.snapNumber != null) lines.push(`Snap #${sub.snapNumber}`);
+    lines.push(`Status: ${STATUS_OPTIONS.find((s) => s.value === sub.status)?.label ?? sub.status}`);
+    if (sub.priority) lines.push(`Priority: ${PRIORITY_OPTIONS.find((p) => p.value === sub.priority)?.label ?? sub.priority}`);
+    lines.push(`Capture Type: ${CAPTURE_TYPE_LABELS[sub.type] ?? sub.type}`);
+    if (sub.formData?.category) lines.push(`Category: ${sub.formData.category}`);
+    if (sub.formData?.description) lines.push(`Description: ${sub.formData.description}`);
+    if (sub.context?.pageUrl) lines.push(`Page: ${sub.context.pageUrl}`);
+    const submitter = sub.context?.knackUserName || sub.context?.knackUserEmail || sub.context?.userEmail || sub.context?.userId;
+    if (submitter) lines.push(`Submitted By: ${submitter}`);
+    if (sub.context?.knackUserEmail && sub.context.knackUserEmail !== sub.context?.knackUserName) lines.push(`Email: ${sub.context.knackUserEmail}`);
+    if (sub.context?.knackUserId) lines.push(`Knack User ID: ${sub.context.knackUserId}`);
+    const role = sub.context?.knackRoleName || sub.context?.knackRole;
+    if (role) lines.push(`Knack Role: ${role}`);
+    if (sub.context?.userAgent) lines.push(`Browser: ${sub.context.userAgent}`);
+    const submittedAt = sub.createdAt?.toDate?.();
+    if (submittedAt) lines.push(`Submitted: ${submittedAt.toLocaleString()}`);
+    if (sub.screenshotUrl) lines.push(`Screenshot: ${sub.screenshotUrl}`);
+    await navigator.clipboard.writeText(lines.join('\n'));
+    setCopiedInfo(true);
+    setTimeout(() => setCopiedInfo(false), 2000);
+  };
+
+  const copyImage = async () => {
+    if (!sub?.screenshotUrl) return;
+    try {
+      const resp = await fetch(sub.screenshotUrl);
+      const blob = await resp.blob();
+      // ClipboardItem requires image/png — convert if needed
+      const pngBlob: Blob = blob.type === 'image/png'
+        ? blob
+        : await new Promise<Blob>((resolve, reject) => {
+            const tmpImg = new Image();
+            tmpImg.crossOrigin = 'anonymous';
+            const objUrl = URL.createObjectURL(blob);
+            tmpImg.onload = () => {
+              const c = document.createElement('canvas');
+              c.width = tmpImg.naturalWidth;
+              c.height = tmpImg.naturalHeight;
+              c.getContext('2d')?.drawImage(tmpImg, 0, 0);
+              URL.revokeObjectURL(objUrl);
+              c.toBlob((b) => (b ? resolve(b) : reject(new Error('toBlob failed'))), 'image/png');
+            };
+            tmpImg.onerror = () => { URL.revokeObjectURL(objUrl); reject(new Error('img load failed')); };
+            tmpImg.src = objUrl;
+          });
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })]);
+    } catch {
+      // Fallback: copy the direct URL
+      await navigator.clipboard.writeText(sub.screenshotUrl);
+    }
+    setCopiedImage(true);
+    setTimeout(() => setCopiedImage(false), 2000);
+  };
+
   const updateAssignee = async (uid: string, name: string) => {
     if (!id) return;
     setAssigneeSaving(true);
@@ -385,6 +446,16 @@ export default function SnapDetail() {
                   className="absolute inset-0 w-full h-full pointer-events-none"
                   style={{ maxHeight: '600px' }}
                 />
+                <button
+                  onClick={copyImage}
+                  className="absolute top-2 right-2 flex items-center gap-1 text-xs font-medium bg-black/60 hover:bg-black/80 text-white px-2.5 py-1.5 rounded-md transition-colors"
+                  title="Copy image to clipboard"
+                >
+                  {copiedImage
+                    ? <><CheckIcon className="h-3.5 w-3.5" /> Copied!</>
+                    : <><ClipboardDocumentIcon className="h-3.5 w-3.5" /> Copy</>
+                  }
+                </button>
               </div>
             ) : sub.type === 'console_errors' ? (
               <div className="bg-gray-900 p-5">
@@ -678,7 +749,19 @@ export default function SnapDetail() {
 
           {/* Metadata */}
           <div className="bg-white shadow rounded-lg p-5">
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Submission Info</h3>
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3 flex items-center justify-between">
+              Submission Info
+              <button
+                onClick={copyInfo}
+                className="flex items-center gap-1 text-xs font-medium text-gray-400 hover:text-gray-700 normal-case tracking-normal transition-colors"
+                title="Copy submission info to clipboard"
+              >
+                {copiedInfo
+                  ? <><CheckIcon className="h-3.5 w-3.5 text-green-500" /><span className="text-green-600">Copied!</span></>
+                  : <><ClipboardDocumentIcon className="h-3.5 w-3.5" />Copy</>
+                }
+              </button>
+            </h3>
             <dl className="space-y-2 text-sm">
               {sub.snapNumber != null && (
                 <div>
