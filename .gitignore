@@ -9,3 +9,6 @@ yarn-debug.log*
 yarn-error.log*
 functions/lib
 functions/node_modules
+
+# Firebase deploy cache
+.firebase/
