@@ -18,6 +18,60 @@ export const ALL_TAGS = ['Release Notes', 'Product', 'Engineering', 'HIPAA', 'AI
 
 export const blogPosts: BlogPost[] = [
   {
+    slug: 'security-hardening-june-2026',
+    title: 'Security Hardening — Tenant Isolation for AI Agents & Client Invitations',
+    date: '2026-06-12',
+    tags: ['Release Notes', 'HIPAA', 'Engineering', 'AI Agent'],
+    summary:
+      'A proactive internal security review surfaced two cross-tenant access-control gaps — one in the AI-agent (MCP) endpoint and one in client invitations. Both are now patched and deployed. Tenants using AI-agent API keys should rotate them as a precaution.',
+    content: [
+      {
+        type: 'paragraph',
+        text: 'Keeping each tenant\'s data — especially PHI on HIPAA-enabled plugins — strictly isolated is the most important promise Snap4Knack makes. During a routine internal security review we identified two places where that isolation was not enforced as tightly as it should have been. We have fixed both, deployed the fixes to production, and are documenting them here in the interest of transparency.',
+      },
+      { type: 'divider' },
+
+      { type: 'h2', text: '🤖 AI Agent (MCP) Endpoint Now Requires Authentication' },
+      {
+        type: 'paragraph',
+        text: 'The MCP endpoint that lets AI agents read and triage your snaps is designed to authenticate with a per-tenant API key (the keys you create on the API Keys page). A refactor had inadvertently changed that endpoint to identify the tenant from a request parameter instead of validating the API key — which meant the key was not actually being checked.',
+      },
+      {
+        type: 'ul',
+        items: [
+          'The endpoint now requires a valid, active API key in the Authorization header (Authorization: Bearer sk_…) on every request, exactly as the API Keys page documents.',
+          'The tenant is derived from the key itself and can never be supplied or overridden by the caller, so an agent can only ever reach the account that owns its key.',
+          'Requests with a missing, malformed, or revoked key are rejected with a 401 before any data is touched.',
+        ],
+      },
+      {
+        type: 'callout',
+        variant: 'warning',
+        text: 'As a precaution, we recommend that any tenant using AI-agent API keys revoke and regenerate them on the API Keys page. Revoking a key takes effect immediately.',
+      },
+
+      { type: 'divider' },
+
+      { type: 'h2', text: '🔐 Client Invitations Scoped to Plugins You Own' },
+      {
+        type: 'paragraph',
+        text: 'When inviting a client to a plugin, the server now verifies that every plugin in the invitation actually belongs to the inviting account before the invitation is created. Previously the list of plugins was accepted without that ownership check, which — because feed access is granted by plugin — could have been used to grant visibility into a plugin owned by a different tenant.',
+      },
+      {
+        type: 'ul',
+        items: [
+          'Invitations referencing any plugin you do not own are now rejected outright with a clear permission error.',
+          'Existing client access and the invitation-acceptance flow are unchanged for legitimate invitations — there is no action required for clients you have already invited.',
+        ],
+      },
+      {
+        type: 'callout',
+        variant: 'info',
+        text: 'Both fixes are enforced server-side in Cloud Functions. There are no changes to how you use the product day to day.',
+      },
+    ],
+  },
+  {
     slug: 'release-notes-june-8-2026',
     title: 'Release Notes — Required Descriptions & Console Logs On by Default',
     date: '2026-06-08',

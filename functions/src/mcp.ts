@@ -18,6 +18,9 @@ import { z } from "zod";
 import { dlpRedactText, stripQueryParams } from "./utils";
 import type { Request, Response } from "express";
 
+// This module is imported by index.ts before its admin.initializeApp() call runs
+// (ES imports evaluate first), so initialize defensively if no app exists yet.
+if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
 const storage = admin.storage();
 
@@ -26,6 +29,23 @@ const ALLOWED_STATUSES = ["backlog", "new", "in_progress", "ready_for_testing", 
 const ALLOWED_PRIORITIES = ["low", "medium", "high", "critical"] as const;
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
+
+/**
+ * Looks up an API key across all tenants via a collection group query.
+ * Returns the owning tenantId if the key is active, null otherwise.
+ */
+async function validateApiKey(rawKey: string): Promise<string | null> {
+  if (!rawKey || !rawKey.startsWith("sk_")) return null;
+  const snap = await db.collectionGroup("api_keys")
+    .where("keyHash", "==", rawKey)
+    .where("status", "==", "active")
+    .limit(1)
+    .get();
+  if (snap.empty) return null;
+  // Parent path: tenants/{tenantId}/api_keys/{keyId} → parent.parent = tenants/{tenantId}
+  const tenantId = snap.docs[0].ref.parent.parent?.id;
+  return tenantId ?? null;
+}
 
 // ── Screenshot upload helpers ─────────────────────────────────────────────────
 
@@ -449,10 +469,19 @@ export const mcp = functions.https.onRequest(
       return;
     }
 
-    // tenantId is required as a query parameter: ?tid=<tenantId>
-    const tenantId = (req.query.tid as string) || "";
+    // Authenticate with an API key from the Authorization header.
+    // tenantId is derived from the key — never trusted from caller input — so a
+    // caller can only ever act within the tenant that owns their key.
+    const authHeader = (req.headers.authorization as string) || "";
+    const rawKey = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+    if (!rawKey) {
+      res.status(401).json({ error: "Missing Authorization header. Expected: Bearer sk_..." });
+      return;
+    }
+
+    const tenantId = await validateApiKey(rawKey);
     if (!tenantId) {
-      res.status(400).json({ error: "Missing required query parameter: tid (tenantId)" });
+      res.status(401).json({ error: "Invalid or revoked API key" });
       return;
     }
 

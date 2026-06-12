@@ -10,7 +10,11 @@ import axios from "axios";
 import { randomUUID } from "crypto";
 import { snapNotificationEmail, criticalSnapEmail, clientInvitationEmail, commentNotificationEmail, newTenantWelcomeEmail, submitterStatusUpdateEmail, snapConfirmationEmail } from "./emailTemplates";
 
-admin.initializeApp();
+// Re-export the MCP Cloud Function so it is registered for deployment.
+// Auth is enforced inside (API key → tenantId); see mcp.ts.
+export { mcp } from "./mcp";
+
+if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
 const auth = admin.auth();
 const secretClient = new SecretManagerServiceClient();
@@ -460,6 +464,23 @@ export const inviteClient = functions.https.onCall(
     const { email, pluginIds } = request.data as { email: string; pluginIds: string[] };
     if (!email || !pluginIds?.length) {
       throw new functions.https.HttpsError("invalid-argument", "email and pluginIds are required.");
+    }
+
+    // Authorization: the caller may only grant access to plugins they own.
+    // Without this, a caller could pass another tenant's (public) pluginId and,
+    // after the invite is accepted, read that tenant's snaps — the snap_submissions
+    // read rule keys on pluginId alone and is not tenant-scoped. (cross-tenant IDOR)
+    const ownedSnaps = await Promise.all(
+      pluginIds.map((pid) =>
+        db.collection("tenants").doc(tenantId).collection("snapPlugins").doc(pid).get()
+      )
+    );
+    const unauthorized = pluginIds.filter((_pid, i) => !ownedSnaps[i].exists);
+    if (unauthorized.length > 0) {
+      throw new functions.https.HttpsError(
+        "permission-denied",
+        "You can only invite clients to plugins you own."
+      );
     }
 
     // Create invitation doc first — this always succeeds regardless of email
