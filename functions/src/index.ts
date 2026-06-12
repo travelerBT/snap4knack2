@@ -918,7 +918,8 @@ export const onSnapCreated = functions.firestore.onDocumentCreated(
             low: "\uD83D\uDFE2 Low", medium: "\uD83D\uDFE1 Medium", high: "\uD83D\uDFE0 High", critical: "\uD83D\uDD34 Critical",
           };
           const statusLabel: Record<string, string> = {
-            new: "New", in_progress: "In Progress", ready_for_testing: "Ready for Testing",
+            new: "New", discussion_needed: "Discussion Needed", questions: "Questions",
+            in_progress: "In Progress", ready_for_testing: "Ready for Testing",
             resolved: "Resolved", archived: "Archived",
           };
 

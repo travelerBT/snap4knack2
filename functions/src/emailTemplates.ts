@@ -179,6 +179,8 @@ export function submitterStatusUpdateEmail(opts: {
   const snapLabel = opts.snapNumber != null ? `#${opts.snapNumber} — ${category}` : category;
   const statusBadgeColor: Record<string, string> = {
     new: '#6b7280',
+    discussion_needed: '#ea580c',
+    questions: '#0891b2',
     in_progress: '#2563eb',
     ready_for_testing: '#7c3aed',
     resolved: '#16a34a',
@@ -186,6 +188,8 @@ export function submitterStatusUpdateEmail(opts: {
   };
   const statusLabel: Record<string, string> = {
     new: 'New',
+    discussion_needed: 'Discussion Needed',
+    questions: 'Questions',
     in_progress: 'In Progress',
     ready_for_testing: 'Ready for Testing',
     resolved: 'Resolved',

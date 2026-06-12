@@ -25,7 +25,7 @@ const db = admin.firestore();
 const storage = admin.storage();
 
 const STORAGE_BUCKET = "snap4knack2.firebasestorage.app";
-const ALLOWED_STATUSES = ["backlog", "new", "in_progress", "ready_for_testing", "resolved", "archived"] as const;
+const ALLOWED_STATUSES = ["backlog", "new", "discussion_needed", "questions", "in_progress", "ready_for_testing", "resolved", "archived"] as const;
 const ALLOWED_PRIORITIES = ["low", "medium", "high", "critical"] as const;
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
